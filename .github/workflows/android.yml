@@ -83,7 +83,7 @@ jobs:
             echo "is_dev=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Write sign info
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && github.repository == 'LibChecker/LibChecker'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && github.repository == 'Chloemlla/LibChecker'
         run: |
           if [ ! -z "${{ secrets.KEYSTORE_BASE64 }}" ]; then
             echo releaseStorePassword='${{ secrets.KEYSTORE_PASSWORD }}' >> gradle.properties
@@ -98,14 +98,14 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew --non-interactive ${{ matrix.assemble_task }}
       - name: Upload R8 configuration analyzer report
-        if: success() && github.event_name == 'pull_request'
+        if: success()
         uses: actions/upload-artifact@v7
         with:
           name: R8-configuration-analyzer-${{ matrix.flavor }}
           path: app/build/outputs/mapping/${{ matrix.flavor }}Release/configanalyzer.html
           if-no-files-found: error
       - name: Upload built APK
-        if: success() && github.event_name != 'pull_request' && github.repository == 'LibChecker/LibChecker'
+        if: success() && github.event_name != 'pull_request' && github.repository == 'Chloemlla/LibChecker'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
@@ -115,7 +115,7 @@ jobs:
     name: Publish artifacts
     runs-on: ubuntu-latest
     needs: build
-    if: success() && github.event_name != 'pull_request' && github.repository == 'LibChecker/LibChecker'
+    if: success() && github.event_name != 'pull_request' && github.repository == 'Chloemlla/LibChecker'
 
     steps:
       - uses: actions/checkout@v7
@@ -200,8 +200,8 @@ jobs:
               --min "$MIN_SDK_VERSION" \
               --compile "$COMPILE_SDK_VERSION" \
               --package-size "$APK_FILE_SIZE" \
-              --link "https://gh.absinthe.life/github.com/LibChecker/LibChecker/releases/download/$BASE_VERSION_NAME/$FOSS_RELEASE_APK_FILE_NAME" \
-              --note "https://github.com/LibChecker/LibChecker/releases"
+              --link "https://gh.absinthe.life/github.com/Chloemlla/LibChecker/releases/download/$BASE_VERSION_NAME/$FOSS_RELEASE_APK_FILE_NAME" \
+              --note "https://github.com/Chloemlla/LibChecker/releases"
           else
             python3 "${{ github.workspace }}/.github/scripts/sync_latest_stable_metadata.py" \
               --output stable.json \
@@ -261,8 +261,8 @@ jobs:
               --min "$MIN_SDK_VERSION" \
               --compile "$COMPILE_SDK_VERSION" \
               --package-size "$APK_FILE_SIZE" \
-              --link "https://gh.absinthe.life/github.com/LibChecker/LibChecker/releases/download/$BASE_VERSION_NAME/$FOSS_RELEASE_APK_FILE_NAME" \
-              --note "https://github.com/LibChecker/LibChecker/releases"
+              --link "https://gh.absinthe.life/github.com/Chloemlla/LibChecker/releases/download/$BASE_VERSION_NAME/$FOSS_RELEASE_APK_FILE_NAME" \
+              --note "https://github.com/Chloemlla/LibChecker/releases"
           else
             python3 "${{ github.workspace }}/.github/scripts/sync_latest_stable_metadata.py" \
               --output stable.json \
@@ -320,7 +320,7 @@ jobs:
 
   cancelled:
     runs-on: ubuntu-latest
-    if: ${{ false && cancelled() && github.repository == 'LibChecker/LibChecker' && github.event_name != 'pull_request' && github.ref == 'refs/heads/master' }}
+    if: ${{ false && cancelled() && github.repository == 'Chloemlla/LibChecker' && github.event_name != 'pull_request' && github.ref == 'refs/heads/master' }}
     needs: [check, build]
     steps:
       - uses: actions/checkout@v7
