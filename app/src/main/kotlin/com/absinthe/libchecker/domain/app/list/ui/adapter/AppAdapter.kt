@@ -1,6 +1,7 @@
 package com.absinthe.libchecker.domain.app.list.ui.adapter
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.view.ViewGroup
 import com.absinthe.libchecker.database.entity.LCItem
@@ -121,7 +122,13 @@ class AppAdapter(
       viewState = viewState,
       iconPackageInfo = renderState.iconPackageInfos[item.packageName] ?: viewState.packageInfo,
       showMissingPackageStrikeThrough = viewState.isPackageMissing && cardMode != CardMode.DEMO,
-      chips = renderState.itemChips[item.packageName].orEmpty()
+      chips = buildList {
+        addAll(renderState.itemChips[item.packageName].orEmpty())
+        val flags = viewState.packageInfo?.applicationInfo?.flags
+        if (flags != null && flags and ApplicationInfo.FLAG_ALLOW_BACKUP != 0) {
+          add(context.getString(R.string.allow_backup))
+        }
+      }
     )
   }
 

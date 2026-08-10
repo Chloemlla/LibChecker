@@ -126,7 +126,7 @@ When working with APK analysis features:
 ### Gradle Configuration
 - Multi-module project with build-logic module
 - Uses version catalog (libs.versions.toml) for dependency management
-- Supports multiple product flavors (foss, market)
+- Uses a single product flavor (foss)
 - Implements R8/ProGuard for release builds
 - Uses KSP for annotation processing
 
@@ -135,10 +135,8 @@ When working with APK analysis features:
 - BuildConfig generation for configuration constants
 - AIDL support for system-level interactions
 - Resource optimization for release builds
-- Multi-flavor support:
+- Single-flavor support (foss):
   - **foss**: Open source version (default)
-  - **market**: Version with additional market-specific features
-- Firebase integration in market flavor
 - Proguard/R8 obfuscation for release builds
 
 ## Testing Guidelines

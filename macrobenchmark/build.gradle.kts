@@ -29,9 +29,6 @@ android {
     create("foss") {
       dimension = "channel"
     }
-    create("market") {
-      dimension = "channel"
-    }
   }
 }
 

@@ -83,6 +83,9 @@ class DetailHeaderBinder(
         text = title.versionInfo
         setLongClickCopiedToClipboard(text)
       }
+      setAllowBackupChip(
+        applicationInfo != null && (applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP) != 0
+      )
     }
   }
 

@@ -2,7 +2,10 @@ package com.absinthe.libchecker.domain.app.detail.ui.view
 
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -15,6 +18,7 @@ import com.absinthe.libchecker.constant.Constants
 import com.absinthe.libchecker.domain.app.detail.ui.adapter.node.AbiLabelNode
 import com.absinthe.libchecker.utils.extensions.applyCondensedSingleLine
 import com.absinthe.libchecker.utils.extensions.applySingleLineEndEllipsize
+import com.absinthe.libchecker.utils.extensions.dp
 import com.absinthe.libchecker.utils.extensions.getColorByAttr
 import com.absinthe.libchecker.utils.extensions.getDimensionPixelSize
 import com.absinthe.libchecker.utils.extensions.getResourceIdByAttr
@@ -123,6 +127,11 @@ class DetailsTitleView(
       }
       abiLabelsFlexLayout.addView(view)
     }
+    abiLabelsFlexLayout.addView(allowBackupChip)
+  }
+
+  fun setAllowBackupChip(show: Boolean) {
+    allowBackupChip.visibility = if (show) VISIBLE else GONE
   }
 
   private val abiLabelsFlexLayout = FlexboxLayout(context).apply {
@@ -142,6 +151,30 @@ class DetailsTitleView(
     justifyContent = JustifyContent.FLEX_START
     flexDirection = FlexDirection.ROW
     this@DetailsTitleView.addView(this)
+  }
+
+  private val allowBackupChip = AppCompatTextView(context).apply {
+    layoutParams = MarginLayoutParams(
+      ViewGroup.LayoutParams.WRAP_CONTENT,
+      28.dp
+    ).apply {
+      marginEnd = 4.dp
+      bottomMargin = 4.dp
+    }
+    text = context.getString(R.string.allow_backup)
+    gravity = Gravity.CENTER
+    includeFontPadding = false
+    setPadding(10.dp, 0, 10.dp, 0)
+    setTextAppearance(context.getResourceIdByAttr(com.google.android.material.R.attr.textAppearanceLabelSmall))
+    setTextColor(context.getColorByAttr(com.google.android.material.R.attr.colorOnSurfaceVariant))
+    background = GradientDrawable().apply {
+      shape = GradientDrawable.RECTANGLE
+      setColor(Color.TRANSPARENT)
+      setStroke(1.dp, context.getColorByAttr(com.google.android.material.R.attr.colorOutline))
+      cornerRadius = 28.dp / 2f
+    }
+    visibility = GONE
+    this@DetailsTitleView.abiLabelsFlexLayout.addView(this)
   }
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

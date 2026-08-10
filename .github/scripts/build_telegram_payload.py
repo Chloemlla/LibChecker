@@ -5,7 +5,7 @@ import json
 import os
 
 
-def build_media_group(caption_json, media_name="marketRelease"):
+def build_media_group(caption_json, media_name="appRelease"):
   return [{
     "type": "document",
     "media": f"attach://{media_name}",

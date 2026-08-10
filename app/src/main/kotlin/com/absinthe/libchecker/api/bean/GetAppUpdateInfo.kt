@@ -3,7 +3,6 @@ package com.absinthe.libchecker.api.bean
 import com.squareup.moshi.JsonClass
 
 private const val FLAVOR_FOSS = "foss"
-private const val FLAVOR_MARKET = "market"
 
 @JsonClass(generateAdapter = true)
 data class GetAppUpdateInfo(
@@ -14,7 +13,7 @@ data class GetAppUpdateInfo(
     return if (isFoss) {
       flavors?.get(FLAVOR_FOSS) ?: app
     } else {
-      flavors?.get(FLAVOR_MARKET)
+      null
     }
   }
 

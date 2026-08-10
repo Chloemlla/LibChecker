@@ -18,7 +18,7 @@ class BuildTelegramPayloadTest(unittest.TestCase):
       build_telegram_payload.build_media_group(json.dumps("caption")),
       [{
         "type": "document",
-        "media": "attach://marketRelease",
+        "media": "attach://appRelease",
         "parse_mode": "HTML",
         "caption": "caption"
       }]

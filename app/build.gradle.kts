@@ -1,5 +1,3 @@
-import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
-
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.parcelize)
@@ -9,11 +7,8 @@ plugins {
   alias(libs.plugins.androidX.room3)
   alias(libs.plugins.moshiX)
   alias(libs.plugins.aboutlibraries)
-  alias(libs.plugins.gms)
-  alias(libs.plugins.firebase.crashlytics)
   id("build-logic")
   id("res-opt")
-  id("market-stable-manifest")
 }
 
 ksp {
@@ -38,11 +33,6 @@ setupAppModule {
   }
 
   buildTypes {
-    debug {
-      configure<CrashlyticsExtension> {
-        mappingFileUploadEnabled = false
-      }
-    }
     release {
       optimization {
         enable = true
@@ -68,13 +58,6 @@ setupAppModule {
       isDefault = true
       dimension = flavorDimensions[0]
       buildConfigField("Boolean", "IS_FOSS", "true")
-      configure<CrashlyticsExtension> {
-        mappingFileUploadEnabled = false
-      }
-    }
-    create("market") {
-      dimension = flavorDimensions[0]
-      buildConfigField("Boolean", "IS_FOSS", "false")
     }
     configureEach {
       manifestPlaceholders["channel"] = this.name
@@ -172,12 +155,6 @@ dependencies {
   implementation(libs.bundles.rikkax)
 
   implementation(libs.bundles.shizuku)
-
-  "marketCompileOnly"(fileTree("ohos"))
-  "marketImplementation"(platform(libs.firebase.bom))
-  "marketImplementation"(libs.bundles.firebase) {
-    exclude(group = "com.google.android.gms", module = "play-services-ads-identifier")
-  }
 }
 
 protobuf {

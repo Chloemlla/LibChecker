@@ -15,9 +15,6 @@ setupLibraryModule {
     create("foss") {
       dimension = flavorDimensions[0]
     }
-    create("market") {
-      dimension = flavorDimensions[0]
-    }
   }
 }
 
@@ -28,6 +25,4 @@ dependencies {
   api(libs.google.material)
 
   implementation(libs.timber)
-
-  "marketCompileOnly"(fileTree("../app/ohos"))
 }

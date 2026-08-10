@@ -12,10 +12,6 @@ gradlePlugin {
       id = "res-opt"
       implementationClass = "ResoptPlugin"
     }
-    create("market-stable-manifest") {
-      id = "market-stable-manifest"
-      implementationClass = "MarketStableManifestPlugin"
-    }
   }
 }
 

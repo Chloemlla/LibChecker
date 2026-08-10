@@ -18,8 +18,6 @@ Use the Gradle wrapper from the repository root. On macOS/Linux use
   `com.absinthe.libchecker.debug`; `com.absinthe.libchecker` may be a separate
   release install used for snapshot export/import checks.
 - Release/R8/package validation: `./gradlew :app:assembleRelease`
-- Market R8 rule check when full signing is blocked:
-  `./gradlew :app:minifyMarketReleaseWithR8`
 - Jetpack Macrobenchmark targeted smoke:
   `ANDROID_SERIAL=<serial> ./gradlew :macrobenchmark:connectedFossBenchmarkAndroidTest --no-configuration-cache`
   Add `-Pandroid.testInstrumentationRunnerArguments.class=<BenchmarkClass#method>`
@@ -41,7 +39,7 @@ or release behavior changes, run the matching assemble/minify task.
 - Java toolchain: 25.
 - SDK levels are configured in `build-logic/src/main/kotlin/Projects.kt`
   (`compileSdk = 37`, `targetSdk = 37`, `minSdk = 24`).
-- `foss` is the default flavor. `market` adds Google/Firebase integrations.
+- `foss` is the only flavor.
 - There is no dedicated unit-test gate today. If tests are added, put JVM tests
   under `src/test` and instrumented tests under `src/androidTest`.
 - Version name/code come from `baseVersionName` plus git state in
@@ -102,8 +100,7 @@ Important `:app` boundaries:
   package-manager helpers. Reuse them before adding another parser.
 - `database/` owns Room entities, DAO, repository, migrations, schemas, and
   backup helpers.
-- `app/src/foss/` and `app/src/market/` are flavor source sets. Keep matching
-  APIs when touching flavor delegates.
+- `app/src/foss/` is the flavor source set. Keep matching APIs when touching flavor delegates.
 - `app/src/main/res/values/strings.xml` is for user-facing strings.
   `values/untranslatable.xml` is only for strings that should not go through
   Crowdin.
@@ -154,7 +151,7 @@ Important `:app` boundaries:
 - Prefer `FileProvider` for sharing/exporting app files. Any legacy `file://`
   exposure must stay narrowly scoped and idempotent; new paths should not
   expand it.
-- Keep `foss` free of market-only Google/Firebase behavior.
+- Keep `foss` free of Google/Firebase behavior.
 - Review manifests carefully when changing exported activities, deep links,
   FileProvider, Shizuku provider authorities, package visibility, foreground
   services, or sensitive permissions.
@@ -189,7 +186,7 @@ Important `:app` boundaries:
 
 - Never revert or overwrite user changes unless explicitly asked.
 - Never commit generated build output, `.gradle/`, `.kotlin/`, `app/build/`,
-  `app/foss/`, or `app/market/`.
+  `app/foss/`.
 - Never move runtime logic into `:hidden-api`.
 - Never add Google/Firebase behavior to `foss`.
 - Never hand-update all translated `values-*` resources unless explicitly asked;
