@@ -37,10 +37,12 @@ object BackupRulesParser {
             val disableValue = parser.getAttributeValueOrNull("disableIfNoEncryptionCapabilities")
             disableIfNoEncryptionCapabilities = disableValue?.toBooleanOrNull()
           }
+
           "device-transfer" -> {
             inDeviceTransfer = true
             inCloudBackup = false
           }
+
           "include", "exclude" -> {
             val rule = parser.buildBackupRule()
             if (inCloudBackup) {
