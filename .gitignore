@@ -92,3 +92,11 @@ app/.settings/org.eclipse.buildship.core.prefs
 
 # Local Perfetto trace processor wrapper
 trace_processor
+
+# Python bytecode cache (from .github/scripts tests)
+__pycache__/
+*.pyc
+
+# Lumen Crash SDK local-maven staging and resolved version cache
+local-maven/
+lumen-crash.resolved.version

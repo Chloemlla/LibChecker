@@ -51,6 +51,10 @@ jobs:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Test workflow scripts
         run: python3 -m unittest discover -s .github/scripts/tests -p 'test_*.py'
+      - name: Resolve and stage lumen-crash SDK
+        run: |
+          python3 .github/scripts/fetch-lumen-crash-sdk.py
+          echo "LUMEN_CRASH_VERSION=$(cat lumen-crash.resolved.version)" >> "$GITHUB_ENV"
       - run: ./gradlew --non-interactive spotlessCheck
 
   build:
@@ -98,6 +102,10 @@ jobs:
           else
             echo "signing_available=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Resolve and stage lumen-crash SDK
+        run: |
+          python3 .github/scripts/fetch-lumen-crash-sdk.py
+          echo "LUMEN_CRASH_VERSION=$(cat lumen-crash.resolved.version)" >> "$GITHUB_ENV"
       - name: Clean build
         if: steps.version-check.outputs.is_dev == 'false'
         run: ./gradlew --non-interactive clean

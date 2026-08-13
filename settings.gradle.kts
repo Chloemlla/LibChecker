@@ -16,6 +16,24 @@ pluginManagement {
 dependencyResolutionManagement {
   repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
   repositories {
+    // Lumen Crash SDK local-maven staging (must precede GitHub Packages)
+    maven {
+      name = "LumenCrashLocal"
+      url = uri(rootDir.resolve("local-maven"))
+    }
+    // Lumen Crash SDK on GitHub Packages (conditional: empty credentials skip)
+    val gprUser = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+    val gprKey = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
+    if (!gprUser.isNullOrBlank() && !gprKey.isNullOrBlank()) {
+      maven {
+        name = "GitHubPackagesProjectLumen"
+        url = uri("https://maven.pkg.github.com/Chloemlla/Project-Lumen")
+        credentials {
+          username = gprUser
+          password = gprKey
+        }
+      }
+    }
     google {
       content {
         includeGroupByRegex(".*google.*")

@@ -1,6 +1,7 @@
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.parcelize)
+  alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.protobuf)
   alias(libs.plugins.hiddenApiRefine)
   alias(libs.plugins.ksp)
@@ -30,6 +31,7 @@ setupAppModule {
     aidl = true
     buildConfig = true
     viewBinding = true
+    compose = true
   }
 
   buildTypes {
@@ -100,6 +102,14 @@ androidComponents {
   }
 }
 
+// Lumen Crash SDK: version resolved from gradle property, env var, or local file (never hardcoded)
+val lumenCrashVersion: String =
+  providers.gradleProperty("lumenCrashVersion").orNull?.takeIf { it.isNotBlank() }
+    ?: providers.environmentVariable("LUMEN_CRASH_VERSION").orNull?.takeIf { it.isNotBlank() }
+    ?: runCatching { rootProject.file("lumen-crash.resolved.version").readText().trim() }
+      .getOrNull()?.takeIf { it.isNotBlank() }
+    ?: error("Resolve latest lumen-crash SDK first: run .github/scripts/fetch-lumen-crash-sdk.py")
+
 dependencies {
   compileOnly(dependencies.project(":hidden-api"))
 
@@ -109,6 +119,7 @@ dependencies {
   implementation(libs.koin.android)
   implementation(libs.androidX.core)
   implementation(libs.androidX.activity)
+  implementation(libs.androidX.activityCompose)
   implementation(libs.androidX.fragment)
   implementation(libs.androidX.constraintLayout)
   implementation(libs.androidX.browser)
@@ -155,6 +166,11 @@ dependencies {
   implementation(libs.bundles.rikkax)
 
   implementation(libs.bundles.shizuku)
+
+  // Lumen Crash SDK (Compose-based crash UI): Compose BOM + bundle. The SDK AAR
+  // ships consumer R8 keep rules (proguard.txt) that AGP merges automatically.
+  implementation(platform(libs.compose.bom))
+  implementation("com.chloemlla.lumen:lumen-crash:$lumenCrashVersion")
 }
 
 protobuf {
