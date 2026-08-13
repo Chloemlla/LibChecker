@@ -9,4 +9,9 @@ public class ApplicationInfoHidden {
 
   public String primaryCpuAbi;
   public int privateFlags;
+  public int fullBackupContent;
+  public int dataExtractionRules;
+  public boolean fullBackupOnly;
+  public boolean killAfterRestore;
+  public boolean restoreAnyVersion;
 }

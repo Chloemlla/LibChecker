@@ -1,6 +1,7 @@
 package com.absinthe.libchecker.domain.app.detail.action
 
 import android.content.pm.ApplicationInfo
+import android.content.pm.ApplicationInfoHidden
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
@@ -42,6 +43,7 @@ import com.absinthe.libchecker.utils.extensions.getAppName
 import com.absinthe.libchecker.utils.extensions.maybeResourceId
 import com.absinthe.libchecker.utils.manifest.ApplicationReader
 import com.absinthe.libchecker.utils.manifest.PropertiesMap
+import dev.rikka.tools.refine.Refine
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -200,10 +202,11 @@ class DetailItemResolver(
   suspend fun getAppBackupRules(packageInfo: PackageInfo?): BackupRules? = withContext(Dispatchers.IO) {
     val applicationInfo = packageInfo?.applicationInfo ?: return@withContext null
     val resources = runCatching { packageManager.getResourcesForApplication(applicationInfo) }.getOrNull()
+    val hiddenApi = Refine.unsafeCast<ApplicationInfoHidden>(applicationInfo)
 
-    val fullBackupContentId = applicationInfo.fullBackupContent.takeIf { it != 0 }
+    val fullBackupContentId = hiddenApi.fullBackupContent.takeIf { it != 0 }
     val dataExtractionRulesId = if (OsUtils.atLeastS()) {
-      applicationInfo.dataExtractionRules.takeIf { it != 0 }
+      hiddenApi.dataExtractionRules.takeIf { it != 0 }
     } else {
       null
     }
@@ -230,9 +233,9 @@ class DetailItemResolver(
     BackupRules(
       allowBackup = applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP != 0,
       backupAgent = applicationInfo.backupAgentName?.takeIf { it.isNotEmpty() },
-      fullBackupOnly = applicationInfo.fullBackupOnly,
-      killAfterRestore = applicationInfo.killAfterRestore,
-      restoreAnyVersion = applicationInfo.restoreAnyVersion,
+      fullBackupOnly = hiddenApi.fullBackupOnly,
+      killAfterRestore = hiddenApi.killAfterRestore,
+      restoreAnyVersion = hiddenApi.restoreAnyVersion,
       cloudBackup = cloudBackup,
       deviceTransfer = deviceTransfer
     )

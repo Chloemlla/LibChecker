@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.Gravity
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import androidx.annotation.StringRes
@@ -31,9 +32,9 @@ class BackupRulesBottomSheetView(context: Context) :
 
   private val contentContainer = LinearLayout(context).apply {
     orientation = VERTICAL
-    layoutParams = ScrollView.LayoutParams(
-      ScrollView.LayoutParams.MATCH_PARENT,
-      ScrollView.LayoutParams.WRAP_CONTENT
+    layoutParams = FrameLayout.LayoutParams(
+      FrameLayout.LayoutParams.MATCH_PARENT,
+      FrameLayout.LayoutParams.WRAP_CONTENT
     )
     paddingBottomCompat = 16.dp
   }
