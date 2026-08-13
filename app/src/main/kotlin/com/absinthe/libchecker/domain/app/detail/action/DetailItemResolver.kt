@@ -233,9 +233,9 @@ class DetailItemResolver(
     BackupRules(
       allowBackup = applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP != 0,
       backupAgent = applicationInfo.backupAgentName?.takeIf { it.isNotEmpty() },
-      fullBackupOnly = hiddenApi.fullBackupOnly,
-      killAfterRestore = hiddenApi.killAfterRestore,
-      restoreAnyVersion = hiddenApi.restoreAnyVersion,
+      fullBackupOnly = runCatching { hiddenApi.fullBackupOnly }.getOrDefault(false),
+      killAfterRestore = runCatching { hiddenApi.killAfterRestore }.getOrDefault(false),
+      restoreAnyVersion = runCatching { hiddenApi.restoreAnyVersion }.getOrDefault(false),
       cloudBackup = cloudBackup,
       deviceTransfer = deviceTransfer
     )
