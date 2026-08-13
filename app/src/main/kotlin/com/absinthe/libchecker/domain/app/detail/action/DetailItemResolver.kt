@@ -204,9 +204,9 @@ class DetailItemResolver(
     val resources = runCatching { packageManager.getResourcesForApplication(applicationInfo) }.getOrNull()
     val hiddenApi = Refine.unsafeCast<ApplicationInfoHidden>(applicationInfo)
 
-    val fullBackupContentId = hiddenApi.fullBackupContent.takeIf { it != 0 }
+    val fullBackupContentId = runCatching { hiddenApi.fullBackupContent }.getOrNull()?.takeIf { it != 0 }
     val dataExtractionRulesId = if (OsUtils.atLeastS()) {
-      hiddenApi.dataExtractionRules.takeIf { it != 0 }
+      runCatching { hiddenApi.dataExtractionRules }.getOrNull()?.takeIf { it != 0 }
     } else {
       null
     }
