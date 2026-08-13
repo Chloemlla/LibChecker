@@ -25,6 +25,9 @@ on:
       - 'NOTICE'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
@@ -83,7 +86,7 @@ jobs:
             echo "is_dev=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Write sign info
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && github.repository == 'Chloemlla/LibChecker'
+        id: sign-prep
         run: |
           if [ ! -z "${{ secrets.KEYSTORE_BASE64 }}" ]; then
             echo releaseStorePassword='${{ secrets.KEYSTORE_PASSWORD }}' >> gradle.properties
@@ -91,6 +94,9 @@ jobs:
             echo releaseKeyPassword='${{ secrets.KEY_PASSWORD }}' >> gradle.properties
             echo releaseStoreFile='${{ github.workspace }}/key.jks' >> gradle.properties
             echo ${{ secrets.KEYSTORE_BASE64 }} | base64 --decode > ${{ github.workspace }}/key.jks
+            echo "signing_available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signing_available=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Clean build
         if: steps.version-check.outputs.is_dev == 'false'
@@ -110,188 +116,55 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ github.workspace }}/${{ matrix.apk_path }}
-
-  publish:
-    name: Publish artifacts
-    runs-on: ubuntu-latest
-    needs: build
-    if: success() && github.event_name != 'pull_request' && github.repository == 'Chloemlla/LibChecker'
-
-    steps:
-      - uses: actions/checkout@v7
-      - name: Download Foss APK
-        uses: actions/download-artifact@v8
-        with:
-          name: Foss
-          path: artifacts/foss
       - name: Set apk path
         id: apk-path
+        if: steps.sign-prep.outputs.signing_available == 'true'
         run: |
-          foss_path=$(find artifacts/foss -name '*.apk' -type f | head -1)
-          echo "foss_path=$foss_path" >> $GITHUB_OUTPUT
+          apk_file=$(find "${{ matrix.apk_path }}" -maxdepth 1 -name '*.apk' -type f | head -1)
+          if [ -z "$apk_file" ]; then
+            echo "Built APK not found under ${{ matrix.apk_path }}"
+            exit 1
+          fi
+          echo "apk_path=$apk_file" >> "$GITHUB_OUTPUT"
       - name: Read APK info
         id: apk-info
+        if: steps.sign-prep.outputs.signing_available == 'true'
         env:
-          FOSS_FILE: ${{ steps.apk-path.outputs.foss_path }}
+          FOSS_FILE: ${{ steps.apk-path.outputs.apk_path }}
         run: python3 .github/scripts/read_apk_info.py
-      - name: Build Telegram caption
-        id: telegram-caption
-        if: success() && github.ref == 'refs/heads/master'
-        env:
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
-          COMMIT_URL: ${{ github.event.head_commit.url }}
-          TELEGRAM_FOOTER: Snapshot apk is attached
-          TELEGRAM_TEXT_LIMIT: 1024
-        run: python3 .github/scripts/build_telegram_notification.py
-      - name: Send commit to telegram
-        if: success() && github.ref == 'refs/heads/master'
-        env:
-          CHANNEL_ID: ${{ secrets.TELEGRAM_TO }}
-          BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          FOSS_FILE: ${{ steps.apk-path.outputs.foss_path }}
-          TELEGRAM_CAPTION_JSON: ${{ steps.telegram-caption.outputs.json }}
+      - name: Prepare release assets
+        if: steps.sign-prep.outputs.signing_available == 'true'
         run: |
-          MEDIA_JSON=$(python3 .github/scripts/build_telegram_payload.py --mode media-group)
-          curl -v "https://api.telegram.org/bot${BOT_TOKEN}/sendMediaGroup" \
-            -F "chat_id=${CHANNEL_ID}" \
-            -F "media=${MEDIA_JSON}" \
-            -F appRelease="@$FOSS_FILE"
-      - name: Checkout assets ci branch
-        uses: actions/checkout@v7
+          mkdir -p "$GITHUB_WORKSPACE/release-assets"
+          VERSION_NAME="${{ steps.apk-info.outputs.version-name }}"
+          VERSION_CODE="${{ steps.apk-info.outputs.version-code }}"
+          cp "${{ steps.apk-path.outputs.apk_path }}" "$GITHUB_WORKSPACE/release-assets/LibChecker-${VERSION_NAME}-${VERSION_CODE}-foss-release.apk"
+          (
+            cd "$GITHUB_WORKSPACE/release-assets"
+            sha256sum *.apk > checksums.txt
+          )
+      - name: Upload signed APK artifacts
+        if: steps.sign-prep.outputs.signing_available == 'true'
+        uses: actions/upload-artifact@v7
         with:
-          repository: LibChecker/assets
-          ref: ci
-          path: assets-ci
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-      - name: Update assets ci branch
-        env:
-          FOSS_FILE: ${{ github.workspace }}/${{ steps.apk-path.outputs.foss_path }}
-          APK_VERSION_NAME: ${{ steps.apk-info.outputs.version-name }}
-          APK_VERSION_CODE: ${{ steps.apk-info.outputs.version-code }}
-          BASE_VERSION_NAME: ${{ steps.apk-info.outputs.base-version-name }}
-          FOSS_RELEASE_APK_FILE_NAME: LibChecker-${{ steps.apk-info.outputs.version-name }}-${{ steps.apk-info.outputs.version-code }}-foss-release.apk
-          TARGET_SDK_VERSION: ${{ steps.apk-info.outputs.target-sdk-version }}
-          MIN_SDK_VERSION: ${{ steps.apk-info.outputs.min-sdk-version }}
-          COMPILE_SDK_VERSION: ${{ steps.apk-info.outputs.compile-sdk-version }}
-          APK_FILE_SIZE: ${{ steps.apk-info.outputs.file-size }}
-          IS_STABLE: ${{ steps.apk-info.outputs.is-stable }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          cd ${{ github.workspace }}/assets-ci
-
-          cp -f "$FOSS_FILE" ./app-release.apk
-          python3 "${{ github.workspace }}/.github/scripts/write_assets_metadata.py" \
-            --output ci.json \
-            --version "$APK_VERSION_NAME" \
-            --version-code "$APK_VERSION_CODE" \
-            --target "$TARGET_SDK_VERSION" \
-            --min "$MIN_SDK_VERSION" \
-            --compile "$COMPILE_SDK_VERSION" \
-            --package-size "$APK_FILE_SIZE" \
-            --link "https://gh.absinthe.life/github.com/LibChecker/assets/raw/refs/heads/ci/app-release.apk"
-
-          if [ "$IS_STABLE" = "true" ]; then
-            python3 "${{ github.workspace }}/.github/scripts/write_assets_metadata.py" \
-              --output stable.json \
-              --version "$BASE_VERSION_NAME" \
-              --version-code "$APK_VERSION_CODE" \
-              --target "$TARGET_SDK_VERSION" \
-              --min "$MIN_SDK_VERSION" \
-              --compile "$COMPILE_SDK_VERSION" \
-              --package-size "$APK_FILE_SIZE" \
-              --link "https://gh.absinthe.life/github.com/Chloemlla/LibChecker/releases/download/$BASE_VERSION_NAME/$FOSS_RELEASE_APK_FILE_NAME" \
-              --note "https://github.com/Chloemlla/LibChecker/releases"
-          else
-            python3 "${{ github.workspace }}/.github/scripts/sync_latest_stable_metadata.py" \
-              --output stable.json \
-              --target "$TARGET_SDK_VERSION" \
-              --min "$MIN_SDK_VERSION" \
-              --compile "$COMPILE_SDK_VERSION"
-          fi
-
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add app-release.apk ci.json stable.json
-          if git diff --cached --quiet; then
-            echo "No assets ci changes"
-          else
-            git commit -m "Update APK assets"
-            git push origin HEAD:ci
-          fi
-      - name: Checkout assets main branch
-        uses: actions/checkout@v7
+          name: LibChecker-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+      - name: Automatic release (master branch only)
+        if: >-
+          steps.sign-prep.outputs.signing_available == 'true' &&
+          github.event_name != 'pull_request' &&
+          github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
-          repository: LibChecker/assets
-          ref: main
-          path: assets-main
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          fetch-depth: 0
-      - name: Update assets main branch
-        env:
-          APK_VERSION_NAME: ${{ steps.apk-info.outputs.version-name }}
-          APK_VERSION_CODE: ${{ steps.apk-info.outputs.version-code }}
-          BASE_VERSION_NAME: ${{ steps.apk-info.outputs.base-version-name }}
-          FOSS_RELEASE_APK_FILE_NAME: LibChecker-${{ steps.apk-info.outputs.version-name }}-${{ steps.apk-info.outputs.version-code }}-foss-release.apk
-          TARGET_SDK_VERSION: ${{ steps.apk-info.outputs.target-sdk-version }}
-          MIN_SDK_VERSION: ${{ steps.apk-info.outputs.min-sdk-version }}
-          COMPILE_SDK_VERSION: ${{ steps.apk-info.outputs.compile-sdk-version }}
-          APK_FILE_SIZE: ${{ steps.apk-info.outputs.file-size }}
-          IS_STABLE: ${{ steps.apk-info.outputs.is-stable }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          cd ${{ github.workspace }}/assets-main
-
-          python3 "${{ github.workspace }}/.github/scripts/write_assets_metadata.py" \
-            --output ci.json \
-            --version "$APK_VERSION_NAME" \
-            --version-code "$APK_VERSION_CODE" \
-            --target "$TARGET_SDK_VERSION" \
-            --min "$MIN_SDK_VERSION" \
-            --compile "$COMPILE_SDK_VERSION" \
-            --package-size "$APK_FILE_SIZE" \
-            --link "https://gh.absinthe.life/github.com/LibChecker/assets/raw/refs/heads/ci/app-release.apk"
-
-          if [ "$IS_STABLE" = "true" ]; then
-            python3 "${{ github.workspace }}/.github/scripts/write_assets_metadata.py" \
-              --output stable.json \
-              --version "$BASE_VERSION_NAME" \
-              --version-code "$APK_VERSION_CODE" \
-              --target "$TARGET_SDK_VERSION" \
-              --min "$MIN_SDK_VERSION" \
-              --compile "$COMPILE_SDK_VERSION" \
-              --package-size "$APK_FILE_SIZE" \
-              --link "https://gh.absinthe.life/github.com/Chloemlla/LibChecker/releases/download/$BASE_VERSION_NAME/$FOSS_RELEASE_APK_FILE_NAME" \
-              --note "https://github.com/Chloemlla/LibChecker/releases"
-          else
-            python3 "${{ github.workspace }}/.github/scripts/sync_latest_stable_metadata.py" \
-              --output stable.json \
-              --target "$TARGET_SDK_VERSION" \
-              --min "$MIN_SDK_VERSION" \
-              --compile "$COMPILE_SDK_VERSION"
-          fi
-
-          if ! python3 "${{ github.workspace }}/.github/scripts/generate_apk_size_chart.py" \
-            --repository . \
-            --output apk-size-history-light.svg \
-            --dark-output apk-size-history-dark.svg \
-            --pending-commit "$GITHUB_SHA" \
-            --pending-date "$(git -C "${{ github.workspace }}" show -s --format=%cs "$GITHUB_SHA")"; then
-            echo "::warning::QuickChart unavailable; keeping previous APK size charts"
-          fi
-
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add ci.json stable.json
-          for chart in apk-size-history-light.svg apk-size-history-dark.svg; do
-            [ -f "$chart" ] && git add "$chart"
-          done
-          if git diff --cached --quiet; then
-            echo "No assets main changes"
-          else
-            git commit -m "Update APK metadata"
-            git push origin HEAD:main
-          fi
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          make_latest: true
+          generate_release_notes: true
+          tag_name: "v${{ steps.apk-info.outputs.version-name }}"
+          prerelease: false
+          name: "LibChecker ${{ steps.apk-info.outputs.version-name }}"
+          files: release-assets/*
 
   skipped:
     runs-on: ubuntu-latest
