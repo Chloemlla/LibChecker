@@ -48,6 +48,7 @@ class GetAppDetailFeaturesUseCase(
     }
 
     emitFeature(VersionedFeature(Features.Ext.APPLICATION_PROP))
+    emitFeature(VersionedFeature(Features.Ext.BACKUP_RULES))
 
     if (OsUtils.atLeastR() && !isApk) {
       val info = installedAppRepository.getInstallSource(packageInfo.packageName)

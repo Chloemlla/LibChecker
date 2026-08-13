@@ -28,6 +28,7 @@ import com.absinthe.libchecker.domain.app.detail.action.PrepareAppPackageShareAc
 import com.absinthe.libchecker.domain.app.detail.action.buildAppInstallSourceBottomSheetDisplay
 import com.absinthe.libchecker.domain.app.detail.action.buildOverlayDetailBottomSheetDisplay
 import com.absinthe.libchecker.domain.app.detail.action.buildXposedInfoBottomSheetDisplay
+import com.absinthe.libchecker.domain.app.detail.backup.BackupRules
 import com.absinthe.libchecker.domain.app.detail.content.buildAppBundleItemDisplayData
 import com.absinthe.libchecker.domain.app.detail.content.getAppBundleSplitItems
 import com.absinthe.libchecker.domain.app.detail.model.AppBundleItem
@@ -147,6 +148,10 @@ class DetailActionLoader(
     properties: Map<String, String>?
   ): List<AppPropItem> {
     return itemResolver.getAppManifestProperties(packageInfo, properties)
+  }
+
+  suspend fun getAppBackupRules(packageInfo: PackageInfo?): BackupRules? {
+    return itemResolver.getAppBackupRules(packageInfo)
   }
 
   suspend fun getElfDetail(packageName: String, elfPath: String) = itemResolver.getElfDetail(packageName, elfPath)

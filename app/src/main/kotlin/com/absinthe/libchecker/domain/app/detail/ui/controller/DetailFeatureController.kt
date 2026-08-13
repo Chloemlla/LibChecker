@@ -54,6 +54,8 @@ class DetailFeatureController(
 
       AppDetailFeatureAction.AppProp -> showAppPropDialog()
 
+      AppDetailFeatureAction.BackupRules -> showBackupRulesDialog()
+
       AppDetailFeatureAction.InstallSource -> if (OsUtils.atLeastR()) {
         FeaturesDialog.showAppInstallSourceDialog(activity, packageInfo().packageName)
       }
@@ -86,5 +88,9 @@ class DetailFeatureController(
     } else {
       FeaturesDialog.showAppPropDialog(activity, packageInfo())
     }
+  }
+
+  private fun showBackupRulesDialog() {
+    FeaturesDialog.showBackupRulesDialog(activity, packageInfo())
   }
 }

@@ -1,5 +1,6 @@
 package com.absinthe.libchecker.domain.app.detail.action
 
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
@@ -20,6 +21,9 @@ import com.absinthe.libchecker.compat.ZipFileCompat
 import com.absinthe.libchecker.constant.GlobalValues
 import com.absinthe.libchecker.constant.URLManager
 import com.absinthe.libchecker.database.RulesRepository
+import com.absinthe.libchecker.domain.app.detail.backup.BackupRules
+import com.absinthe.libchecker.domain.app.detail.backup.BackupRulesParser
+import com.absinthe.libchecker.domain.app.detail.backup.BackupRulesSection
 import com.absinthe.libchecker.domain.app.detail.model.AppPropItem
 import com.absinthe.libchecker.domain.app.detail.model.DetailInfoItemDisplay
 import com.absinthe.libchecker.domain.app.detail.model.DetailInfoTextStyle
@@ -31,6 +35,7 @@ import com.absinthe.libchecker.domain.app.detail.resource.AppResourceReference
 import com.absinthe.libchecker.domain.app.repository.InstalledAppRepository
 import com.absinthe.libchecker.domain.app.repository.LibraryDetailRepository
 import com.absinthe.libchecker.utils.DateUtils
+import com.absinthe.libchecker.utils.OsUtils
 import com.absinthe.libchecker.utils.PackageUtils
 import com.absinthe.libchecker.utils.elf.ElfParser
 import com.absinthe.libchecker.utils.extensions.getAppName
@@ -190,6 +195,47 @@ class DetailItemResolver(
         )
       }
       .sortedBy(AppPropItem::key)
+  }
+
+  suspend fun getAppBackupRules(packageInfo: PackageInfo?): BackupRules? = withContext(Dispatchers.IO) {
+    val applicationInfo = packageInfo?.applicationInfo ?: return@withContext null
+    val resources = runCatching { packageManager.getResourcesForApplication(applicationInfo) }.getOrNull()
+
+    val fullBackupContentId = applicationInfo.fullBackupContent.takeIf { it != 0 }
+    val dataExtractionRulesId = if (OsUtils.atLeastS()) {
+      applicationInfo.dataExtractionRules.takeIf { it != 0 }
+    } else {
+      null
+    }
+
+    var cloudBackup: BackupRulesSection? = null
+    var deviceTransfer: BackupRulesSection? = null
+    if (resources != null && dataExtractionRulesId != null) {
+      runCatching {
+        resources.getXml(dataExtractionRulesId).use { parser ->
+          val (cloud, device) = BackupRulesParser.parseDataExtractionRules(parser)
+          cloudBackup = cloud
+          deviceTransfer = device
+        }
+      }
+    }
+    if (cloudBackup == null && resources != null && fullBackupContentId != null) {
+      runCatching {
+        resources.getXml(fullBackupContentId).use { parser ->
+          cloudBackup = BackupRulesParser.parseFullBackupContent(parser)
+        }
+      }
+    }
+
+    BackupRules(
+      allowBackup = applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP != 0,
+      backupAgent = applicationInfo.backupAgentName?.takeIf { it.isNotEmpty() },
+      fullBackupOnly = applicationInfo.fullBackupOnly,
+      killAfterRestore = applicationInfo.killAfterRestore,
+      restoreAnyVersion = applicationInfo.restoreAnyVersion,
+      cloudBackup = cloudBackup,
+      deviceTransfer = deviceTransfer
+    )
   }
 
   suspend fun getElfDetail(

@@ -74,6 +74,13 @@ class BuildAppDetailFeatureItemUseCase {
         position = request.currentFeatureCount.coerceAtMost(PRIORITY_APP_PROP)
       )
 
+      Features.Ext.BACKUP_RULES -> AppDetailFeatureItemData(
+        icon = resourceIcon(R.drawable.ic_backup),
+        titleRes = R.string.lib_detail_backup_rules_title,
+        action = AppDetailFeatureAction.BackupRules,
+        position = request.currentFeatureCount.coerceAtMost(PRIORITY_BACKUP_RULES)
+      )
+
       Features.Ext.APPLICATION_INSTALL_SOURCE -> buildInstallSourceItem(request)
 
       Features.Ext.ELF_PAGE_SIZE_16KB -> AppDetailFeatureItemData(
@@ -126,6 +133,7 @@ class BuildAppDetailFeatureItemUseCase {
 
   private companion object {
     const val PRIORITY_APP_PROP = 0
+    const val PRIORITY_BACKUP_RULES = 1
     const val PRIORITY_APP_INSTALL_SOURCE = 1
     const val PRIORITY_16_KB_PAGE_SIZE = 2
     const val PRIORITY_16_KB_PAGE_SIZE_COMPAT = 3
@@ -170,6 +178,7 @@ sealed interface AppDetailFeatureAction {
   data class Kmp(val version: String?) : Dialog
   data object LiveUpdateNotification : Dialog
   data object AppProp : AppDetailFeatureAction
+  data object BackupRules : AppDetailFeatureAction
   data object InstallSource : AppDetailFeatureAction
   data object ElfPageSize16Kb : Dialog
   data object ElfPageSize16KbCompat : Dialog

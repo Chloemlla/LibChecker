@@ -14,6 +14,7 @@ import com.absinthe.libchecker.domain.app.detail.action.AppPackageShareAction
 import com.absinthe.libchecker.domain.app.detail.action.AppPackageShareFile
 import com.absinthe.libchecker.domain.app.detail.action.DetailItemDialogRequest
 import com.absinthe.libchecker.domain.app.detail.action.DetailItemLongClickActions
+import com.absinthe.libchecker.domain.app.detail.backup.BackupRules
 import com.absinthe.libchecker.domain.app.detail.feature.AppDetailFeatureItemData
 import com.absinthe.libchecker.domain.app.detail.header.AppDetailHeaderExtraInfo
 import com.absinthe.libchecker.domain.app.detail.model.AppBundleItem
@@ -392,6 +393,10 @@ class DetailViewModel(
     properties: Map<String, String>?
   ): List<AppPropItem> {
     return detailActionLoader.getAppManifestProperties(packageInfo, properties)
+  }
+
+  suspend fun getAppBackupRules(packageInfo: PackageInfo?): BackupRules? {
+    return detailActionLoader.getAppBackupRules(packageInfo)
   }
 
   suspend fun isInstalledAppComparisonAvailable(packageName: String): Boolean {

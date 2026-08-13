@@ -24,6 +24,7 @@ import com.absinthe.libchecker.domain.app.detail.navigation.EXTRA_PROPS
 import com.absinthe.libchecker.domain.app.detail.ui.dialog.AppBundleBottomSheetDialogFragment
 import com.absinthe.libchecker.domain.app.detail.ui.dialog.AppInstallSourceBSDFragment
 import com.absinthe.libchecker.domain.app.detail.ui.dialog.AppPropBottomSheetDialogFragment
+import com.absinthe.libchecker.domain.app.detail.ui.dialog.BackupRulesBottomSheetDialogFragment
 import com.absinthe.libchecker.ui.base.BaseAlertDialogBuilder
 import com.absinthe.libchecker.utils.Telemetry
 import com.absinthe.libchecker.utils.UiUtils
@@ -101,6 +102,14 @@ object FeaturesDialog {
     AppPropBottomSheetDialogFragment()
       .putArguments(EXTRA_PROPS to props.toJson())
       .show(activity.supportFragmentManager, AppPropBottomSheetDialogFragment::class.java.name)
+  }
+
+  fun showBackupRulesDialog(activity: FragmentActivity, packageInfo: PackageInfo?) {
+    val pi = packageInfo ?: return
+
+    BackupRulesBottomSheetDialogFragment()
+      .putArguments(EXTRA_PACKAGE_INFO to pi)
+      .show(activity.supportFragmentManager, BackupRulesBottomSheetDialogFragment::class.java.name)
   }
 
   @RequiresApi(Build.VERSION_CODES.R)
