@@ -49,6 +49,7 @@ import com.absinthe.libchecker.utils.extensions.applySystemBarsPadding
 import com.absinthe.libchecker.utils.extensions.doOnMainThreadIdle
 import com.absinthe.libchecker.utils.extensions.isKeyboardShowing
 import com.absinthe.libchecker.utils.extensions.setCurrentItem
+import com.chloemlla.lumen.crash.LumenCrash
 import com.google.android.material.behavior.HideBottomViewOnScrollBehavior
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationBarView
@@ -93,6 +94,15 @@ class MainActivity :
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
+    // LumenCrash pending-report gate. Must run before theme/design/main host
+    // work. Follows the SDK multi-activity pattern: hand off to the dedicated
+    // crash report Activity and return early — do NOT finish() the launcher
+    // here, on some ROMs that flash-exits the process with no visible UI.
+    val gated = runCatching { presentPendingCrashUiIfNeeded() }.getOrDefault(false)
+    if (gated) {
+      return
+    }
+
     if (intent.getBooleanExtra(Constants.PP_FROM_CLOUD_RULES_UPDATE, false)) {
       Timber.w("Reinitializing updated rule database")
       cloudRulesRepository.reinitializeRules()
@@ -109,6 +119,23 @@ class MainActivity :
     )
     appViewModel.clearApkCache()
     handleIntent(intent)
+  }
+
+  /**
+   * When a crash report is pending from a previous run, launches the dedicated
+   * crash report Activity and signals the caller to skip the rest of [onCreate].
+   * The launcher Activity is intentionally left on the back stack (not finished).
+   */
+  private fun presentPendingCrashUiIfNeeded(): Boolean {
+    val hasPendingReport = LumenCrash.loadPendingReportSafely() != null
+    if (hasPendingReport) {
+      startActivity(
+        Intent(this, LumenCrashReportActivity::class.java).apply {
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+      )
+    }
+    return hasPendingReport
   }
 
   override fun onNewIntent(intent: Intent) {

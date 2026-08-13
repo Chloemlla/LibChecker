@@ -43,6 +43,19 @@ the Telegram bot and shared JavaScript analyzer.
 The WebUI can analyze and compare Android packages in the browser with local
 processing, and it can open app information exported by LibChecker.
 
+## Crash Reporting
+
+Crash, ANR, and startup-hang diagnostics are collected with the
+[Lumen Crash SDK](https://github.com/Chloemlla/Project-Lumen). Reports stay
+on-device and can be reviewed, copied, or shared from a dedicated crash report
+screen shown on the next launch; nothing is uploaded to any backend.
+
+The SDK version is auto-resolved from the latest Project Lumen `main` release
+and staged into a local Maven repository at build time. At runtime the SDK is
+installed as the first step in `Application.attachBaseContext`, the first
+rendered frame is marked from `BaseActivity`, and `MainActivity` gates startup
+on any pending crash report.
+
 ## Supported Versions
 
 - Android 7.0 ～ 17

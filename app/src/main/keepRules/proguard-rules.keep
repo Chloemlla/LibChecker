@@ -80,3 +80,14 @@
 -keep public class info.appdev.charting.animation.* {
     public protected *;
 }
+
+# Lumen Crash SDK — explicit backup minify exemption.
+# The AAR consumer-rules.pro (com.chloemlla.lumen:lumen-crash) already keeps the
+# com.chloemlla.lumen.crash.** package and is merged automatically; this is a
+# defensive host-side backup so release minify (optimization DSL) never strips
+# author-integrity or public API classes. See the lumen-crash README "field
+# lesson: white-screen / instant exit on release cold start".
+-keep class com.chloemlla.lumen.crash.** { *; }
+-keepclassmembers class com.chloemlla.lumen.crash.** { *; }
+-keepnames class com.chloemlla.lumen.crash.**
+-dontwarn com.chloemlla.lumen.crash.**

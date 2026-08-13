@@ -35,6 +35,7 @@ import com.absinthe.libchecker.utils.timber.FileLoggingTree
 import com.absinthe.libchecker.utils.timber.ReleaseTree
 import com.absinthe.libchecker.utils.timber.ThreadAwareDebugTree
 import com.absinthe.libraries.utils.utils.Utility
+import com.chloemlla.lumen.crash.LumenCrash
 import com.google.android.material.color.DynamicColors
 import com.jakewharton.processphoenix.ProcessPhoenix
 import java.io.File
@@ -119,6 +120,34 @@ class LibCheckerApp : Application() {
 
   override fun attachBaseContext(base: Context?) {
     super.attachBaseContext(base)
+    // LumenCrash must be the first host work after super, before any bootstrap
+    // that can throw (see lumen-crash README "field lesson: cold-start
+    // flash-exit / wrong install order"). Fail-soft: an SDK install failure
+    // must never break app startup.
+    if (!LumenCrash.isInstalled()) {
+      val installed = LumenCrash.installSafely(this) {
+        appDisplayName = this@LibCheckerApp.getString(R.string.app_name)
+        versionName = BuildConfig.VERSION_NAME
+        versionCode = BuildConfig.VERSION_CODE
+        anrWatchdogEnabled = true
+        anrWatchdogTimeoutMillis = 5_000L
+        anrWatchdogCheckIntervalMillis = 1_000L
+        startupHangWatchdogEnabled = true
+        startupHangTimeoutMillis = 15_000L
+        // foss privacy: keep all crash data on-device, never POST to the
+        // crash-report backend.
+        crashReportBackendEnabled = false
+        onReportSaved = { report ->
+          Timber.w("LumenCrash report saved: kind=${report.kind} rootCause=${report.rootCause}")
+        }
+        onAnrDetected = { report ->
+          Timber.w("LumenCrash ANR/freeze detected: kind=${report.kind} durationMillis=${report.durationMillis}")
+        }
+      }
+      if (!installed) {
+        Timber.w("LumenCrash SDK failed to install")
+      }
+    }
     MainLooperFilter.start()
   }
 

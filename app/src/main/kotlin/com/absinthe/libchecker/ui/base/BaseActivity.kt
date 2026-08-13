@@ -15,6 +15,7 @@ import com.absinthe.libchecker.constant.GlobalValues
 import com.absinthe.libchecker.utils.OsUtils
 import com.absinthe.libchecker.utils.extensions.applySystemBarsMargin
 import com.absinthe.libchecker.utils.extensions.applySystemBarsPadding
+import com.chloemlla.lumen.crash.LumenCrash
 import java.util.Locale
 import timber.log.Timber
 
@@ -49,6 +50,9 @@ abstract class BaseActivity<VB : ViewBinding> :
     if (shouldApplyTranslucentSystemBars()) {
       onApplyContentWindowInsets()
     }
+    // LumenCrash: the first usable frame is about to render, so stop the
+    // startup-hang watchdog. Fail-soft so the SDK can never break startup.
+    runCatching { LumenCrash.markStartupComplete() }
   }
 
   override fun onResume() {

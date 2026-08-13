@@ -56,6 +56,10 @@
         android:resource="@xml/shortcuts" />
     </activity>
     <activity
+      android:name=".domain.home.ui.LumenCrashReportActivity"
+      android:exported="false"
+      android:theme="@style/AppTheme" />
+    <activity
       android:name=".domain.app.detail.ui.AppDetailActivity"
       android:configChanges="orientation"
       android:exported="true"

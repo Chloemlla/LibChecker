@@ -1,4 +1,7 @@
-2.5.4
+2.5.5
+- Integrated the Lumen Crash SDK: added crash, ANR, and startup-hang detection with an in-app crash report review screen (reports stay on-device, nothing is uploaded)
+
+## 2.5.4
 - Adapted for Android 17
 - Added app info export in Settings. Exported files can now be opened in WebUI¹ and viewed visually
 - Added a detail page for Overlay apps
