@@ -386,6 +386,7 @@
   <string name="adv_show_overlays">显示 Overlay</string>
   <string name="adv_show_64_bit">显示 64 位应用</string>
   <string name="adv_show_32_bit">显示 32 位应用</string>
+  <string name="adv_only_allow_backup">仅允许备份</string>
   <string name="adv_sort_mode">排序模式</string>
   <string name="adv_sort_by_time">更新时间</string>
   <string name="adv_sort_by_target_version">Target 版本</string>

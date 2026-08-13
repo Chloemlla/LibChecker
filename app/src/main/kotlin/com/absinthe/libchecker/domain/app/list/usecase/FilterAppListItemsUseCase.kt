@@ -1,5 +1,6 @@
 package com.absinthe.libchecker.domain.app.list.usecase
 
+import android.content.pm.ApplicationInfo
 import com.absinthe.libchecker.constant.Constants
 import com.absinthe.libchecker.constant.options.AdvancedOptions
 import com.absinthe.libchecker.database.entity.LCItem
@@ -37,6 +38,12 @@ class FilterAppListItemsUseCase(
           isAbi64Bit(trueAbi, request.isCurrentProcess64Bit) ||
           (trueAbi == Constants.NO_LIBS && request.isCurrentProcess64Bit)
       }
+    }
+    if ((request.options and AdvancedOptions.ONLY_ALLOW_BACKUP) > 0) {
+      val allowBackupPackages = installedAppRepository.getApplicationList()
+        .filter { it.applicationInfo?.flags?.and(ApplicationInfo.FLAG_ALLOW_BACKUP) != 0 }
+        .mapTo(mutableSetOf()) { it.packageName }
+      filterSequence = filterSequence.filter { it.packageName in allowBackupPackages }
     }
 
     if (request.keyword.isNotEmpty()) {

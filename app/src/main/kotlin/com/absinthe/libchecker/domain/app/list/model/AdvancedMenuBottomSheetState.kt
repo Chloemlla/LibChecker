@@ -74,7 +74,8 @@ fun buildAdvancedMenuBottomSheetState(
       ),
       MenuOptionItem(R.string.adv_show_overlays, AdvancedOptions.SHOW_OVERLAYS, displayOptions),
       MenuOptionItem(R.string.adv_show_64_bit, AdvancedOptions.SHOW_64_BIT_APPS, displayOptions),
-      MenuOptionItem(R.string.adv_show_32_bit, AdvancedOptions.SHOW_32_BIT_APPS, displayOptions)
+      MenuOptionItem(R.string.adv_show_32_bit, AdvancedOptions.SHOW_32_BIT_APPS, displayOptions),
+      MenuOptionItem(R.string.adv_only_allow_backup, AdvancedOptions.ONLY_ALLOW_BACKUP, displayOptions)
     ),
     viewOptions = listOf(
       MenuOptionItem(

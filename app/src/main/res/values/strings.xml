@@ -406,6 +406,7 @@
   <string name="adv_show_overlays">Show overlays</string>
   <string name="adv_show_64_bit">Show 64-bit apps</string>
   <string name="adv_show_32_bit">Show 32-bit apps</string>
+  <string name="adv_only_allow_backup">Allow backup only</string>
   <string name="adv_sort_mode">Sort mode</string>
   <string name="adv_sort_by_time">Last updated</string>
   <string name="adv_sort_by_target_version">Target version</string>
