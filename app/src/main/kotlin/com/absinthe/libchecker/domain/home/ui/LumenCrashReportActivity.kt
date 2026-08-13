@@ -59,7 +59,7 @@ class LumenCrashReportActivity : ComponentActivity() {
             // clear again defensively, then restart the launcher cleanly.
             runCatching { LumenCrash.clearPendingReport() }
             restartLauncher()
-          },
+          }
         ) {
           // Gate content is only composed when there is no pending report.
           // Unreachable here because we restart the launcher when report == null.
