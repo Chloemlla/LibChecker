@@ -12,6 +12,7 @@ object LibReferenceOptions {
   const val SHARED_UID = 1 shl 8
   const val ONLY_NOT_MARKED = 1 shl 9
   const val ACTION = 1 shl 10
+  const val ONLY_ALLOW_BACKUP = 1 shl 11
 
   const val DEFAULT_OPTIONS =
     NATIVE_LIBS or
@@ -54,6 +55,9 @@ object LibReferenceOptions {
     }
     if (options and ACTION != 0) {
       append("ACTION, ")
+    }
+    if (options and ONLY_ALLOW_BACKUP != 0) {
+      append("ONLY_ALLOW_BACKUP, ")
     }
     if (isNotEmpty()) {
       delete(length - 2, length)

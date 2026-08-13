@@ -63,6 +63,7 @@
   <string name="ref_category_shared_uid">Shared UID</string>
   <string name="ref_category_signatures">Signatures</string>
   <string name="ref_category_only_not_marked">Only not marked</string>
+  <string name="ref_category_only_allow_backup">Allow backup only</string>
   <string name="ref_category_action">Action</string>
 
   <string name="string_kotlin_used">Kotlin used</string>

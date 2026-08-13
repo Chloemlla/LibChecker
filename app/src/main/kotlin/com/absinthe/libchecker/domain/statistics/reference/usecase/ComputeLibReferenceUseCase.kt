@@ -170,8 +170,14 @@ class ComputeLibReferenceUseCase(
 
       updateProgress(progressCount + 1, allowComplete = false)
       val libName = entry.name
-      val referredList = entry.packageNames
+      var referredList = entry.packageNames
       val type = entry.type
+      if (config.onlyAllowBackup) {
+        referredList = entry.packageNames.filterTo(LinkedHashSet()) { pkg ->
+          index.packageInfoByName[pkg]?.applicationInfo?.flags?.and(ApplicationInfo.FLAG_ALLOW_BACKUP) != 0
+        }
+        if (referredList.isEmpty()) continue
+      }
       if (referredList.size >= config.threshold && libName.isNotBlank()) {
         val ruleType = if (type == ACTION) ACTION_IN_RULES else type
         val rule = if (type != PERMISSION && type != METADATA) {
@@ -380,7 +386,8 @@ class ComputeLibReferenceUseCase(
 
   data class MatchConfig(
     val threshold: Int,
-    val onlyNotMarked: Boolean
+    val onlyNotMarked: Boolean,
+    val onlyAllowBackup: Boolean
   )
 
   class ReferenceIndex internal constructor(

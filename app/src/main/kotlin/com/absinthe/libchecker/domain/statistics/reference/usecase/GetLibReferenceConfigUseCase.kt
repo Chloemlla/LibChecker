@@ -20,7 +20,8 @@ class GetLibReferenceConfigUseCase(
   fun getMatchConfig(): ComputeLibReferenceUseCase.MatchConfig {
     return ComputeLibReferenceUseCase.MatchConfig(
       threshold = settingsRepository.threshold,
-      onlyNotMarked = settingsRepository.options and LibReferenceOptions.ONLY_NOT_MARKED > 0
+      onlyNotMarked = settingsRepository.options and LibReferenceOptions.ONLY_NOT_MARKED > 0,
+      onlyAllowBackup = settingsRepository.options and LibReferenceOptions.ONLY_ALLOW_BACKUP > 0
     )
   }
 }

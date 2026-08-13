@@ -34,7 +34,8 @@ fun buildLibReferenceMenuBottomSheetState(
         R.string.ref_category_only_not_marked,
         LibReferenceOptions.ONLY_NOT_MARKED,
         currentOptions
-      )
+      ),
+      MenuOptionItem(R.string.ref_category_only_allow_backup, LibReferenceOptions.ONLY_ALLOW_BACKUP, currentOptions)
     )
   )
 }
