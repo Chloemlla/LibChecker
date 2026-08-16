@@ -10,10 +10,12 @@ import android.widget.ScrollView
 import androidx.annotation.StringRes
 import androidx.appcompat.widget.AppCompatTextView
 import com.absinthe.libchecker.R
+import com.absinthe.libchecker.domain.app.detail.backup.BackupPolicy
 import com.absinthe.libchecker.domain.app.detail.backup.BackupRule
 import com.absinthe.libchecker.domain.app.detail.backup.BackupRuleAction
 import com.absinthe.libchecker.domain.app.detail.backup.BackupRules
 import com.absinthe.libchecker.domain.app.detail.backup.BackupRulesSection
+import com.absinthe.libchecker.domain.app.detail.backup.policy
 import com.absinthe.libchecker.utils.extensions.dp
 import com.absinthe.libchecker.utils.extensions.getColorByAttr
 import com.absinthe.libchecker.utils.extensions.paddingBottomCompat
@@ -111,6 +113,7 @@ class BackupRulesBottomSheetView(context: Context) :
   }
 
   private fun addRuleSection(section: BackupRulesSection) {
+    contentContainer.addView(createNoteRow(context.getString(section.policy.descriptionRes())))
     section.rules.forEach { rule ->
       contentContainer.addView(createRuleRow(rule))
     }
@@ -206,6 +209,11 @@ class BackupRulesBottomSheetView(context: Context) :
   private fun BackupRuleAction.labelRes(): Int = when (this) {
     BackupRuleAction.INCLUDE -> R.string.lib_detail_backup_include
     BackupRuleAction.EXCLUDE -> R.string.lib_detail_backup_exclude
+  }
+
+  private fun BackupPolicy.descriptionRes(): Int = when (this) {
+    BackupPolicy.ALLOWLIST -> R.string.lib_detail_backup_policy_allowlist
+    BackupPolicy.DENYLIST -> R.string.lib_detail_backup_policy_denylist
   }
 
   private fun Boolean?.toYesNoText(): String = when (this) {

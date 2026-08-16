@@ -226,6 +226,8 @@
   <string name="lib_detail_backup_include">包含</string>
   <string name="lib_detail_backup_exclude">排除</string>
   <string name="lib_detail_backup_no_rules">未配置自定义规则，应用使用系统默认的 Auto Backup 行为。</string>
+  <string name="lib_detail_backup_policy_allowlist">仅备份下方列出的路径，其余全部排除。</string>
+  <string name="lib_detail_backup_policy_denylist">备份全部数据，但排除下方列出的路径。</string>
   <string name="lib_detail_xposed_min_version">Min 版本</string>
   <string name="lib_detail_xposed_target_version">Target 版本</string>
   <string name="lib_detail_xposed_auto_hot_reload">自动热重载</string>

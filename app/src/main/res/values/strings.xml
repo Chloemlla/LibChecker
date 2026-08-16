@@ -238,6 +238,8 @@
   <string name="lib_detail_backup_include">Include</string>
   <string name="lib_detail_backup_exclude">Exclude</string>
   <string name="lib_detail_backup_no_rules">No custom rules. The app uses the system default Auto Backup behavior.</string>
+  <string name="lib_detail_backup_policy_allowlist">Only the paths listed below are backed up. All other app data is excluded.</string>
+  <string name="lib_detail_backup_policy_denylist">All app data is backed up, except for the paths listed below.</string>
   <string name="lib_detail_xposed_min_version">Minimum version</string>
   <string name="lib_detail_xposed_target_version">Target version</string>
   <string name="lib_detail_xposed_auto_hot_reload">Automatic hot reload</string>
