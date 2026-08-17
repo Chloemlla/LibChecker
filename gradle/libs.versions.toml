@@ -50,7 +50,7 @@ androidX-browser = "androidx.browser:browser:1.10.0"
 androidX-collection = { module = "androidx.collection:collection", version.ref = "androidX-collection" }
 androidX-constraintLayout = "androidx.constraintlayout:constraintlayout:2.2.2"
 androidX-core = "androidx.core:core-ktx:1.19.0"
-androidX-fragment = "androidx.fragment:fragment-ktx:1.8.9"
+androidX-fragment = "androidx.fragment:fragment-ktx:1.9.0"
 androidX-lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "androidX-lifecycle" }
 androidX-lifecycle-viewModel = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "androidX-lifecycle" }
 androidX-preference = "androidx.preference:preference-ktx:1.2.1"
@@ -64,7 +64,7 @@ androidX-viewPager2 = "androidx.viewpager2:viewpager2:1.1.0"
 androidX-window = "androidx.window:window:1.5.1"
 
 square-moshi = "com.squareup.moshi:moshi:1.15.2"
-square-okHttp = "com.squareup.okhttp3:okhttp:5.4.0"
+square-okHttp = "com.squareup.okhttp3:okhttp:5.5.0"
 square-okio = "com.squareup.okio:okio:3.18.1"
 square-retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "square-retrofit" }
 square-retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi", version.ref = "square-retrofit" }
