@@ -6,10 +6,12 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.IBinder
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.PathInterpolator
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
 import androidx.coordinatorlayout.widget.CoordinatorLayout
@@ -17,18 +19,21 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.MenuProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.get
 import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.annotation.STATUS_INIT_END
 import com.absinthe.libchecker.annotation.STATUS_START_INIT
 import com.absinthe.libchecker.constant.Constants
+import com.absinthe.libchecker.constant.GlobalValues
 import com.absinthe.libchecker.constant.OnceTag
 import com.absinthe.libchecker.databinding.ActivityMainBinding
 import com.absinthe.libchecker.domain.home.model.HomeToolbarTitleState
@@ -43,16 +48,18 @@ import com.absinthe.libchecker.ui.base.IAppBarContainer
 import com.absinthe.libchecker.ui.base.IListController
 import com.absinthe.libchecker.ui.base.IListControllerHost
 import com.absinthe.libchecker.utils.LCAppUtils
+import com.absinthe.libchecker.utils.OsUtils
 import com.absinthe.libchecker.utils.Telemetry
 import com.absinthe.libchecker.utils.extensions.addBackStateHandler
 import com.absinthe.libchecker.utils.extensions.applySystemBarsPadding
 import com.absinthe.libchecker.utils.extensions.doOnMainThreadIdle
 import com.absinthe.libchecker.utils.extensions.isKeyboardShowing
-import com.absinthe.libchecker.utils.extensions.setCurrentItem
+import com.absinthe.libchecker.view.app.BlurCoordinatorLayout
+import com.absinthe.libchecker.view.app.InvalidatingHideBottomViewOnScrollBehavior
 import com.chloemlla.lumen.crash.LumenCrash
-import com.google.android.material.behavior.HideBottomViewOnScrollBehavior
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationBarView
+import java.util.WeakHashMap
 import jonathanfinerty.once.Once
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
@@ -62,7 +69,11 @@ import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
 import timber.log.Timber
 
-const val PAGE_TRANSFORM_DURATION = 300L
+private const val PAGE_EXIT_DURATION = 90L
+private const val PAGE_ENTER_DURATION = 160L
+private const val PAGE_TRANSITION_OFFSET_DP = 20f
+private val PAGE_EXIT_INTERPOLATOR = PathInterpolator(0.4f, 0f, 1f, 1f)
+private val PAGE_ENTER_INTERPOLATOR = PathInterpolator(0f, 0f, 0.2f, 1f)
 
 class MainActivity :
   BaseActivity<ActivityMainBinding>(),
@@ -73,9 +84,21 @@ class MainActivity :
   private val appViewModel: HomeViewModel by viewModel()
   private val cloudRulesRepository: CloudRulesRepository by inject()
   private var listController: IListController? = null
+  private val initialListTopPaddings = WeakHashMap<View, Int>()
+  private var blurContainer: BlurCoordinatorLayout? = null
+  private var appbarScrollTarget: RecyclerView? = null
+  private val appbarLocation = IntArray(2)
+  private val firstListItemLocation = IntArray(2)
+  private var isPageTransitionRunning = false
+  private var pendingPageIndex: Int? = null
+  private val appbarScrollListener = object : RecyclerView.OnScrollListener() {
+    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+      updateAppbarContentUnderlap()
+    }
+  }
 
   @Suppress("DEPRECATION")
-  private val navViewBehavior by lazy { HideBottomViewOnScrollBehavior<BottomNavigationView>() }
+  private val navViewBehavior by lazy { InvalidatingHideBottomViewOnScrollBehavior() }
   private val toolbarTitleView by lazy { HomeToolbarTitleView(this) }
   private lateinit var toolbarTitleState: HomeToolbarTitleState
   private val workerServiceConnection = object : ServiceConnection {
@@ -144,6 +167,8 @@ class MainActivity :
   }
 
   override fun onDestroy() {
+    appbarScrollTarget?.removeOnScrollListener(appbarScrollListener)
+    appbarScrollTarget = null
     super.onDestroy()
     unbindService(workerServiceConnection)
   }
@@ -235,11 +260,131 @@ class MainActivity :
   }
 
   override fun scheduleAppbarLiftingStatus(isLifted: Boolean) {
-    binding.appbar.isLifted = isLifted
+    // Blur mode draws its own progressive-glass appbar; the lifted surface would paint over it.
+    updateAppbarContentUnderlap()
+    if (blurContainer?.blurEnabled != true) {
+      binding.appbar.isLifted = isLifted
+    }
+  }
+
+  override fun setBlurDesignEnabled(enabled: Boolean) {
+    val appbarInset = resolveCurrentAppbarInset()
+    val container = if (enabled) installBlurContainer() else blurContainer
+    if (enabled) {
+      container?.setAppbarContentUnderlap(isListItemUnderAppbar())
+    }
+    container?.setBlurEnabled(enabled)
+    if (!enabled && container != null) {
+      replaceMainContainer(container, binding.container)
+      blurContainer = null
+    }
+    initialListTopPaddings.entries.toList().forEach { (targetView, initialPaddingTop) ->
+      applyHomeListTopPadding(
+        targetView = targetView,
+        initialPaddingTop = initialPaddingTop,
+        appbarBottom = appbarInset
+      )
+    }
+  }
+
+  private fun installBlurContainer(): BlurCoordinatorLayout? {
+    if (!OsUtils.atLeastT()) return null
+    return blurContainer ?: BlurCoordinatorLayout(this).also { container ->
+      replaceMainContainer(binding.container, container)
+      blurContainer = container
+    }
+  }
+
+  private fun replaceMainContainer(from: ViewGroup, to: ViewGroup) {
+    val parent = from.parent as? ViewGroup ?: return
+    val index = parent.indexOfChild(from)
+    to.id = from.id
+    to.layoutParams = from.layoutParams
+    while (from.childCount > 0) {
+      val child = from.getChildAt(0)
+      from.removeViewAt(0)
+      to.addView(child)
+    }
+    parent.removeViewAt(index)
+    parent.addView(to, index)
+    to.bringChildToFront(binding.appbar)
   }
 
   override fun setLiftOnScrollTargetView(targetView: View) {
     binding.appbar.setLiftOnScrollTargetView(targetView)
+    val recyclerView = targetView as? RecyclerView
+    if (appbarScrollTarget !== recyclerView) {
+      appbarScrollTarget?.removeOnScrollListener(appbarScrollListener)
+      appbarScrollTarget = recyclerView
+      recyclerView?.addOnScrollListener(appbarScrollListener)
+    }
+    targetView.doOnLayout { updateAppbarContentUnderlap() }
+    updateAppbarContentUnderlap()
+  }
+
+  private fun updateAppbarContentUnderlap() {
+    blurContainer?.setAppbarContentUnderlap(isListItemUnderAppbar())
+  }
+
+  private fun isListItemUnderAppbar(): Boolean {
+    val firstListItem = appbarScrollTarget?.getChildAt(0) ?: return false
+    binding.appbar.getLocationOnScreen(appbarLocation)
+    firstListItem.getLocationOnScreen(firstListItemLocation)
+    return isListItemUnderAppbar(
+      appbarBottom = appbarLocation[1] + binding.appbar.height,
+      firstListItemTop = firstListItemLocation[1]
+    )
+  }
+
+  override fun prepareAppbarContentInset(targetView: View) {
+    val initialPaddingTop = initialListTopPaddings.getOrPut(targetView) {
+      targetView.paddingTop
+    }
+    applyHomeListTopPadding(
+      targetView = targetView,
+      initialPaddingTop = initialPaddingTop,
+      appbarBottom = resolveCurrentAppbarInset()
+    )
+    binding.appbar.doOnLayout { appbar ->
+      applyHomeListTopPadding(
+        targetView = targetView,
+        initialPaddingTop = initialPaddingTop,
+        appbarBottom = appbar.bottom
+      )
+    }
+  }
+
+  private fun applyHomeListTopPadding(
+    targetView: View,
+    initialPaddingTop: Int,
+    appbarBottom: Int
+  ) {
+    val progressiveBlurActive = blurContainer?.blurEnabled == true
+    val targetPaddingTop = calculateHomeListTopPadding(
+      initialPaddingTop = initialPaddingTop,
+      appbarBottom = appbarBottom,
+      progressiveBlurActive = progressiveBlurActive
+    )
+    if (targetView.paddingTop == targetPaddingTop) return
+    targetView.updatePadding(top = targetPaddingTop)
+  }
+
+  private fun resolveActionBarHeight(): Int {
+    val typedValue = TypedValue()
+    if (!theme.resolveAttribute(androidx.appcompat.R.attr.actionBarSize, typedValue, true)) {
+      return 0
+    }
+    return TypedValue.complexToDimensionPixelSize(typedValue.data, resources.displayMetrics)
+  }
+
+  private fun resolveCurrentAppbarInset(): Int {
+    return resolveHomeListAppbarInset(
+      appbarBottom = binding.appbar.bottom,
+      actionBarHeight = resolveActionBarHeight(),
+      systemBarTopInset = ViewCompat.getRootWindowInsets(binding.root)
+        ?.getInsets(WindowInsetsCompat.Type.systemBars())
+        ?.top ?: 0
+    )
   }
 
   private fun initView() {
@@ -249,7 +394,7 @@ class MainActivity :
     setupToolbarTitle()
 
     binding.apply {
-      container.bringChildToFront(binding.appbar)
+      (container as ViewGroup).bringChildToFront(binding.appbar)
       viewpager.apply {
         adapter = object : FragmentStateAdapter(this@MainActivity) {
           override fun getItemCount(): Int {
@@ -296,9 +441,13 @@ class MainActivity :
         // 当 ViewPager 切换页面时，改变 ViewPager 的显示
         setOnItemSelectedListener {
           fun performClickNavigationItem(index: Int) {
+            if (isPageTransitionRunning) {
+              pendingPageIndex = index
+              return
+            }
             if (binding.viewpager.currentItem != index) {
               if (!binding.viewpager.isFakeDragging) {
-                binding.viewpager.setCurrentItem(index, PAGE_TRANSFORM_DURATION)
+                navigateToPage(index)
               }
             } else {
               val clickFlag =
@@ -335,6 +484,41 @@ class MainActivity :
       enabledState = { !isKeyboardShowing() && binding.toolbar.hasExpandedActionView() },
       handler = { binding.toolbar.collapseActionView() }
     )
+    // Apply blur config last so it wins over the behavior/background setup above.
+    setBlurDesignEnabled(GlobalValues.isBlurDesign)
+  }
+
+  private fun navigateToPage(index: Int) {
+    val viewPager = binding.viewpager
+    isPageTransitionRunning = true
+    val direction = if (index > viewPager.currentItem) 1f else -1f
+    val offset = PAGE_TRANSITION_OFFSET_DP * resources.displayMetrics.density
+    viewPager.animate()
+      .alpha(0f)
+      .translationX(-direction * offset)
+      .setDuration(PAGE_EXIT_DURATION)
+      .setInterpolator(PAGE_EXIT_INTERPOLATOR)
+      .withEndAction {
+        viewPager.setCurrentItem(index, false)
+        viewPager.translationX = direction * offset
+        viewPager.animate()
+          .alpha(1f)
+          .translationX(0f)
+          .setDuration(PAGE_ENTER_DURATION)
+          .setInterpolator(PAGE_ENTER_INTERPOLATOR)
+          .withEndAction(::finishPageTransition)
+          .start()
+      }
+      .start()
+  }
+
+  private fun finishPageTransition() {
+    isPageTransitionRunning = false
+    val nextPageIndex = pendingPageIndex
+    pendingPageIndex = null
+    if (nextPageIndex != null && nextPageIndex != binding.viewpager.currentItem) {
+      navigateToPage(nextPageIndex)
+    }
   }
 
   private fun setupToolbarTitle() {
@@ -462,4 +646,28 @@ class MainActivity :
       }
     }
   }
+}
+
+internal fun calculateHomeListTopPadding(
+  initialPaddingTop: Int,
+  appbarBottom: Int,
+  progressiveBlurActive: Boolean
+): Int {
+  return initialPaddingTop + if (progressiveBlurActive) appbarBottom.coerceAtLeast(0) else 0
+}
+
+internal fun resolveHomeListAppbarInset(
+  appbarBottom: Int,
+  actionBarHeight: Int,
+  systemBarTopInset: Int
+): Int {
+  return if (appbarBottom > 0) {
+    appbarBottom
+  } else {
+    actionBarHeight.coerceAtLeast(0) + systemBarTopInset.coerceAtLeast(0)
+  }
+}
+
+internal fun isListItemUnderAppbar(appbarBottom: Int, firstListItemTop: Int?): Boolean {
+  return appbarBottom > 0 && firstListItemTop != null && firstListItemTop < appbarBottom
 }

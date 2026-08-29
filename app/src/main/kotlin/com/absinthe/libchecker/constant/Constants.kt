@@ -69,6 +69,7 @@ object Constants {
   const val PREF_DEBUG_MODE = "debugMode"
 
   const val PREF_DARK_MODE = "darkMode"
+  const val PREF_AMOLED_THEME = "amoledTheme"
   const val DARK_MODE_OFF = "off"
   const val DARK_MODE_ON = "on"
   const val DARK_MODE_FOLLOW_SYSTEM = "system"
@@ -103,6 +104,8 @@ object Constants {
   const val PREF_RULE_LANGUAGE = "ruleLanguage"
   const val PREF_SNAPSHOT_AUTO_REMOVE_THRESHOLD = "snapshotAutoRemoveThreshold"
   const val PREF_LONG_TAP_SHARE_BUTTON_TIP = "longTapShareButtonTip"
+
+  const val PREF_BLUR_DESIGN = "blurDesign"
 
   const val GET_INSTALLED_APPS = "com.android.permission.GET_INSTALLED_APPS"
 

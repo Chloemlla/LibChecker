@@ -68,6 +68,7 @@ class SettingsFragment :
 
   private companion object {
     const val STATE_EXPANDED_PREFERENCE_KEY = "expanded_preference_key"
+    const val TOGGLE_TRANSITION_DELAY_MS = 300L
 
     val NAVIGATION_PREFERENCE_KEYS = setOf(
       Constants.PREF_ABOUT,
@@ -125,6 +126,37 @@ class SettingsFragment :
       setOnPreferenceChangeListener { _, newValue ->
         settingsViewModel.setColorfulRuleIcon(newValue as Boolean)
         recordPreferenceEvent(Constants.PREF_COLORFUL_ICON, newValue)
+        true
+      }
+    }
+    findPreference<TwoStatePreference>(Constants.PREF_AMOLED_THEME)?.apply {
+      setOnPreferenceChangeListener { _, newValue ->
+        val enabled = newValue as Boolean
+        val hostActivity = activity
+        GlobalValues.isAmoledTheme = enabled
+        if (hostActivity is AppCompatActivity) {
+          hostActivity.window.decorView.postDelayed({
+            ThemeTransitionController.recreateWithTransition(hostActivity)
+          }, TOGGLE_TRANSITION_DELAY_MS)
+        }
+        recordPreferenceEvent(Constants.PREF_AMOLED_THEME, enabled)
+        true
+      }
+    }
+    findPreference<TwoStatePreference>(Constants.PREF_BLUR_DESIGN)?.apply {
+      isVisible = OsUtils.atLeastT()
+      setOnPreferenceChangeListener { _, newValue ->
+        val enabled = newValue as Boolean
+        val hostActivity = activity
+        GlobalValues.isBlurDesign = enabled
+        if (hostActivity is AppCompatActivity) {
+          hostActivity.window.decorView.postDelayed({
+            ThemeTransitionController.recreateWithTransition(hostActivity)
+          }, TOGGLE_TRANSITION_DELAY_MS)
+        } else {
+          (hostActivity as? IAppBarContainer)?.setBlurDesignEnabled(enabled)
+        }
+        recordPreferenceEvent(Constants.PREF_BLUR_DESIGN, enabled)
         true
       }
     }
@@ -598,6 +630,7 @@ class SettingsFragment :
     recyclerView.fixEdgeEffect()
     recyclerView.overScrollMode = RecyclerView.OVER_SCROLL_NEVER
     recyclerView.isVerticalScrollBarEnabled = false
+    (activity as? IAppBarContainer)?.prepareAppbarContentInset(recyclerView)
     recyclerView.applySettingsBottomPadding()
 
     val lp = recyclerView.layoutParams
@@ -631,7 +664,10 @@ class SettingsFragment :
   }
 
   private fun scheduleAppbarRaisingStatus(isLifted: Boolean) {
-    (activity as? IAppBarContainer)?.scheduleAppbarLiftingStatus(isLifted)
+    val host = activity as? IListControllerHost ?: return
+    if (host.isCurrentListController(this)) {
+      (activity as? IAppBarContainer)?.scheduleAppbarLiftingStatus(isLifted)
+    }
   }
 
   override fun onDetach() {
