@@ -18,6 +18,7 @@ enum class BackupPolicy {
   // <include> present: the default backup set is discarded and only the listed
   // paths are backed up; every unlisted path is excluded (opt-in allowlist).
   ALLOWLIST,
+
   // Only <exclude> rules: the full default backup set applies minus the listed
   // exclusions.
   DENYLIST
