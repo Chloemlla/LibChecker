@@ -76,11 +76,11 @@ class DetailHeaderBinder(
       } else {
         setOnClickListener(null)
       }
-      setAllowBackupChip(
-        applicationInfo != null && (applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP) != 0
-      )
       setDetailIconLongClick(applicationInfo, blurView)
     }
+    detailsTitleView.setAllowBackupChip(
+      applicationInfo != null && (applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP) != 0
+    )
   }
 
   private fun bindExtraInfo(extraInfo: DetailHeaderExtraInfoState) {
