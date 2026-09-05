@@ -1,5 +1,5 @@
 [versions]
-agp = "9.3.2"
+agp = "9.4.0"
 aboutlibraries = "14.2.1"
 androidX-lifecycle = "2.11.0"
 androidX-room3 = "3.0.2"
@@ -12,9 +12,9 @@ kotlin = "2.4.10"
 compose-bom = "2024.12.01"
 ktlint = "1.8.0"
 koin-bom = "4.2.2"
-protoc = "4.36.0"
+protoc = "4.36.1"
 shizuku = "13.1.5"
-spotless = "8.10.1"
+spotless = "8.10.2"
 square-retrofit = "3.0.0"
 zhaobozhen = "1.1.8"
 
@@ -65,11 +65,11 @@ androidX-window = "androidx.window:window:1.5.1"
 
 square-moshi = "com.squareup.moshi:moshi:1.15.2"
 square-okHttp = "com.squareup.okhttp3:okhttp:5.5.0"
-square-okio = "com.squareup.okio:okio:3.18.1"
+square-okio = "com.squareup.okio:okio:3.18.2"
 square-retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "square-retrofit" }
 square-retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi", version.ref = "square-retrofit" }
 
-google-dexlib2 = "com.android.tools.smali:smali-dexlib2:3.0.9"
+google-dexlib2 = "com.android.tools.smali:smali-dexlib2:3.0.10"
 google-material = "com.google.android.material:material:1.14.0"
 google-protobuf-javaLite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protoc" }
 google-protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protoc" }
@@ -96,7 +96,7 @@ fastScroll = "me.zhanghai.android.fastscroll:library:1.3.0"
 flexbox = "com.google.android.flexbox:flexbox:3.0.0"
 hiddenApiBypass = "org.lsposed.hiddenapibypass:hiddenapibypass:6.1"
 lc-rules = "com.github.LibChecker:LibChecker-Rules-Bundle:44.4"
-mpAndroidChart = "com.github.AppDevNext.AndroidChart:chartLib:5.2.4"
+mpAndroidChart = "com.github.AppDevNext.AndroidChart:chartLib:5.3"
 once = "com.jonathanfinerty.once:once:1.3.1"
 processPhoenix = "com.jakewharton:process-phoenix:3.0.0"
 timber = "com.jakewharton.timber:timber:5.0.1"

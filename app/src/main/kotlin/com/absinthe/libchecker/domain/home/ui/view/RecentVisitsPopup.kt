@@ -46,6 +46,7 @@ import com.absinthe.libchecker.utils.OsUtils
 import com.absinthe.libchecker.utils.extensions.activity
 import com.absinthe.libchecker.utils.extensions.dpToDimension
 import com.absinthe.libchecker.utils.extensions.getColorByAttr
+import com.absinthe.libchecker.view.app.FloatingNavigationBar
 import com.absinthe.libchecker.view.drawable.setG2Shape
 import com.google.android.material.navigationrail.NavigationRailView
 import java.util.UUID
@@ -164,15 +165,16 @@ class RecentVisitsPopup(
       if (isShowing && !closing) {
         val location = IntArray(2).also(overlay::getLocationOnScreen)
         dragPreview?.moveTo(dragOrigin.x - location[0], dragOrigin.y - location[1])
+        positionSurface()
+        dragPreview?.start()
+        animateTo(1f, 200L)
         // Let the first window traversal submit its draw before PixelCopy occupies
         // RenderThread; otherwise that draw synchronously waits behind the copy.
         overlay.post {
           if (isShowing && !closing) {
             backdrop.capture {
               if (isShowing && !closing) {
-                positionSurface()
-                dragPreview?.start()
-                animateTo(1f, 200L)
+                backdrop.setProgress(progress)
               }
             }
           }
@@ -200,9 +202,13 @@ class RecentVisitsPopup(
     draggedItem = null
     dragToken = null
     cancelDrag = null
-    dragPreview?.stop()
-    dragPreview?.let(overlay::removeView)
-    dragPreview = null
+    dragPreview?.let { preview ->
+      preview.stop()
+      preview.animate().alpha(0f).setDuration(100L).withEndAction {
+        overlay.removeView(preview)
+        if (dragPreview === preview) dragPreview = null
+      }.start()
+    }
     setDropHovered(false)
     if (accepted) updateItems(items) else dismiss()
   }
@@ -327,6 +333,14 @@ class RecentVisitsPopup(
   private fun updateDragLocation(x: Float, y: Float) {
     dragPreview?.moveTo(x, y)
     setDropHovered(isInDropTarget(x, y))
+  }
+
+  fun updateDragLocation(source: View, x: Float, y: Float) {
+    val sourceLocation = IntArray(2).also(source::getLocationOnScreen)
+    dragOrigin.set(sourceLocation[0] + x, sourceLocation[1] + y)
+    if (!overlay.isLaidOut) return
+    val origin = IntArray(2).also(overlay::getLocationOnScreen)
+    updateDragLocation(dragOrigin.x - origin[0], dragOrigin.y - origin[1])
   }
 
   private fun isInDropTarget(x: Float, y: Float): Boolean {
@@ -484,7 +498,7 @@ class RecentVisitsPopup(
     animator?.removeAllListeners()
     animator?.cancel()
     animator = ValueAnimator.ofFloat(progress, target).apply {
-      duration = durationMs
+      duration = (durationMs * kotlin.math.abs(target - progress)).roundToInt().toLong().coerceAtLeast(1L)
       interpolator = PathInterpolator(.2f, 0f, 0f, 1f)
       addUpdateListener { applyProgress(it.animatedValue as Float) }
       addListener(object : AnimatorListenerAdapter() {
@@ -515,6 +529,7 @@ class RecentVisitsPopup(
 
   private inner class BackdropView : FrameLayout(context) {
     private val contentClip = Path().apply { fillType = Path.FillType.EVEN_ODD }
+    private val navigationCutout = Path()
     private val scrimPaint = Paint().apply { color = Color.BLACK }
     private val colorMatrix = ColorMatrix()
     private val ditherShader by lazy {
@@ -545,9 +560,24 @@ class RecentVisitsPopup(
       val hostY = hostLocation[1] - origin[1]
       val navX = (navLocation[0] - origin[0]).toFloat()
       val navY = (navLocation[1] - origin[1]).toFloat()
-      contentClip.rewind()
+      // reset() preserves EVEN_ODD; rewind() resets it and turns the navigation cutout solid.
+      contentClip.reset()
       contentClip.addRect(0f, 0f, width.toFloat(), height.toFloat(), Path.Direction.CW)
-      contentClip.addRect(navX, navY, navX + navigation.width, navY + navigation.height, Path.Direction.CW)
+      val floatingProgress = (navigation as? FloatingNavigationBar)?.currentFloatingProgress ?: 0f
+      if (floatingProgress > 0f) {
+        // Match the fill path inside the translucent navigation stroke.
+        val inset = resources.displayMetrics.density * floatingProgress / 2f
+        navigationCutout.setG2Shape(
+          navX + inset,
+          navY + inset,
+          navX + navigation.width - inset,
+          navY + navigation.height - inset,
+          (navigation.height / 2f - inset) * floatingProgress
+        )
+        contentClip.addPath(navigationCutout)
+      } else {
+        contentClip.addRect(navX, navY, navX + navigation.width, navY + navigation.height, Path.Direction.CW)
+      }
       val window = context.activity?.window
       if (!OsUtils.atLeastS() || !host.isHardwareAccelerated || window == null) {
         onReady()
