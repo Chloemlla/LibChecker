@@ -30,7 +30,10 @@ import com.absinthe.libchecker.domain.statistics.reference.traceReferenceSection
 import com.absinthe.libchecker.domain.statistics.reference.traceReferenceSuspendSection
 import com.absinthe.libchecker.utils.IntentFilterUtils
 import com.absinthe.libchecker.utils.PackageUtils
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import timber.log.Timber
 
@@ -42,10 +45,15 @@ class ComputeLibReferenceUseCase(
     config: ReferenceConfig,
     onProgress: (Int) -> Unit
   ): ReferenceIndex? = traceReferenceSuspendSection(TRACE_REFERENCE_BUILD_INDEX) {
+    currentCoroutineContext().ensureActive()
     val targets = installedAppRepository.getApplicationList()
+    currentCoroutineContext().ensureActive()
     val packageInfoByName = targets.associateByTo(HashMap(targets.size)) { it.packageName }
     val index = ReferenceIndex(packageInfoByName)
     val types = getSelectedLibReferenceTypes(config.options)
+    if (targets.isEmpty() || types.isEmpty()) {
+      return@traceReferenceSuspendSection index
+    }
     val basePackageInfoCache = HashMap<String, PackageInfo>()
     val progressTotal = (targets.size * types.size).coerceAtLeast(1)
     var progressCount = 0
@@ -75,17 +83,14 @@ class ComputeLibReferenceUseCase(
 
     onProgress(0)
 
-    val batchPackageInfoByType = types.mapNotNull { type ->
-      val flags = getPackageInfoFlags(type) ?: return@mapNotNull null
-      type to traceReferenceSection(TRACE_REFERENCE_LOAD_BATCH) {
+    fun createPackageInfoResolver(@LibType type: Int, checkCancelled: () -> Unit): (String) -> PackageInfo? {
+      checkCancelled()
+      val flags = getPackageInfoFlags(type) ?: return ::getBasePackageInfo
+      val batchByPackageName = traceReferenceSection(TRACE_REFERENCE_LOAD_BATCH) {
         val packages = installedAppRepository.getInstalledPackages(flags)
+        checkCancelled()
         packages.associateByTo(HashMap(packages.size)) { it.packageName }
       }
-    }.toMap()
-
-    fun createPackageInfoResolver(@LibType type: Int): (String) -> PackageInfo? {
-      val flags = getPackageInfoFlags(type) ?: return ::getBasePackageInfo
-      val batchByPackageName = batchPackageInfoByType[type].orEmpty()
       val fallbackCache = HashMap<String, PackageInfo?>()
       return { packageName ->
         batchByPackageName[packageName] ?: if (fallbackCache.containsKey(packageName)) {
@@ -98,10 +103,12 @@ class ComputeLibReferenceUseCase(
       }
     }
 
-    suspend fun computeInternal(@LibType type: Int): Boolean {
-      val getPackageInfo = createPackageInfoResolver(type)
+    // Keep each batch and its fallback cache on this synchronous call's stack. Only
+    // reference names/package names escape into the index before the next type loads.
+    fun computeInternal(@LibType type: Int, coroutineContext: CoroutineContext): Boolean {
+      val getPackageInfo = createPackageInfoResolver(type, coroutineContext::ensureActive)
       for (target in targets) {
-        if (!currentCoroutineContext().isActive) {
+        if (!coroutineContext.isActive) {
           return false
         }
 
@@ -117,8 +124,8 @@ class ComputeLibReferenceUseCase(
           continue
         }
 
-        updateProgress(progressCount + 1, allowComplete = false)
-        computeComponentReference(index, target.packageName, type, getPackageInfo)
+        computeComponentReference(index, target.packageName, type, getPackageInfo, coroutineContext::ensureActive)
+        coroutineContext.ensureActive()
         progressCount++
         updateProgress()
       }
@@ -127,7 +134,7 @@ class ComputeLibReferenceUseCase(
 
     for (type in types) {
       val completed = traceReferenceSuspendSection(traceReferenceComputeTypeName(type)) {
-        computeInternal(type)
+        computeInternal(type, currentCoroutineContext())
       }
       if (!completed) {
         return@traceReferenceSuspendSection null
@@ -143,6 +150,7 @@ class ComputeLibReferenceUseCase(
     config: MatchConfig,
     onProgress: (Int) -> Unit
   ): List<LibReferenceItem>? = traceReferenceSuspendSection(TRACE_REFERENCE_MATCH_RULES) {
+    currentCoroutineContext().ensureActive()
     val references = index.snapshotReferences()
     val refList = mutableListOf<LibReferenceItem>()
     var progressCount = 0
@@ -161,7 +169,6 @@ class ComputeLibReferenceUseCase(
         return@traceReferenceSuspendSection null
       }
 
-      updateProgress(progressCount + 1, allowComplete = false)
       val libName = entry.name
       var referredList = entry.packageNames
       val type = entry.type
@@ -227,13 +234,14 @@ class ComputeLibReferenceUseCase(
     index: ReferenceIndex,
     packageName: String,
     @LibType type: Int,
-    getPackageInfo: (String) -> PackageInfo?
+    getPackageInfo: (String) -> PackageInfo?,
+    checkCancelled: () -> Unit
   ) {
     try {
       when (type) {
         NATIVE -> {
           val packageInfo = getPackageInfo(packageName) ?: return
-          val list = PackageUtils.getNativeDirLibs(packageInfo)
+          val list = PackageUtils.getNativeDirLibs(packageInfo, checkCancelled = checkCancelled)
           val nativeLibNames = list.map { it.name }
           val validationResults = RulesRepository.checkNativeLibValidations(
             packageName = packageName,
@@ -339,6 +347,8 @@ class ComputeLibReferenceUseCase(
 
         else -> {}
       }
+    } catch (e: CancellationException) {
+      throw e
     } catch (e: Exception) {
       Timber.e(e)
     }

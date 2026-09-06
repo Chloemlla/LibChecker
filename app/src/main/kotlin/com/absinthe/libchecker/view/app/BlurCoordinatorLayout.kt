@@ -39,7 +39,8 @@ import kotlin.math.roundToLong
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 class BlurCoordinatorLayout @JvmOverloads constructor(
   context: Context,
-  attrs: AttributeSet? = null
+  attrs: AttributeSet? = null,
+  private val contentViewId: Int = R.id.viewpager
 ) : CoordinatorLayout(context, attrs) {
 
   private var contentNode: RenderNode? = null
@@ -221,14 +222,14 @@ class BlurCoordinatorLayout @JvmOverloads constructor(
     val appbar = findViewById<AppBarLayout>(R.id.appbar)
     val navigation = findViewById<View>(R.id.nav_view)
     val navView = navigation as? BottomNavigationView
-    val viewPager = findViewById<ViewPager2>(R.id.viewpager)
+    val contentView = findViewById<View>(contentViewId)
 
-    val capturedContent = if (viewPager != null && width > 0 && height > 0) {
+    val capturedContent = if (contentView != null && width > 0 && height > 0) {
       val node = obtainContentNode()
       node.setRenderEffect(null)
       val recordCanvas = node.beginRecording(node.width, node.height)
       recordCanvas.drawColor(opaqueBackdropColor(contentBackgroundColor))
-      drawCapturedContent(recordCanvas, viewPager)
+      drawCapturedContent(recordCanvas, contentView)
       node.endRecording()
       canvas.drawRenderNode(node)
       node
@@ -261,31 +262,18 @@ class BlurCoordinatorLayout @JvmOverloads constructor(
   private var suppressManagedChildDraw = false
 
   /**
-   * Draws [child] into the captured content node while honoring the transform properties that
-   * [View.draw] would otherwise ignore, so page transition slide/fade animations stay visible.
+   * Use the normal child drawing path so Android can reuse its display list and refresh dirty
+   * descendants, while applying scroll, matrix, alpha and animation properties consistently.
    */
   private fun drawCapturedContent(canvas: Canvas, child: View) {
-    val layerAlpha = capturedChildLayerAlpha(child.alpha)
-    if (layerAlpha <= 0) return
-    val checkpoint = if (layerAlpha < OPAQUE_LAYER_ALPHA) {
-      canvas.saveLayerAlpha(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), layerAlpha)
-    } else {
-      canvas.save()
-    }
-    try {
-      canvas.translate(
-        child.left + child.translationX,
-        child.top + child.translationY
-      )
-      child.draw(canvas)
-    } finally {
-      canvas.restoreToCount(checkpoint)
+    if (child.visibility == VISIBLE || child.animation != null) {
+      super.drawChild(canvas, child, drawingTime)
     }
   }
 
   public override fun drawChild(canvas: Canvas, child: View, drawingTime: Long): Boolean {
     val isManagedChild =
-      child.id == R.id.viewpager || child.id == R.id.appbar || child.id == R.id.nav_view
+      child.id == contentViewId || child.id == R.id.appbar || child.id == R.id.nav_view
     if (suppressManagedChildDraw && isManagedChild) {
       return false
     }
@@ -847,8 +835,6 @@ internal fun calculateDownsampledBlurRadius(
 }
 
 internal fun opaqueBackdropColor(color: Int): Int = color or 0xFF000000.toInt()
-
-internal fun capturedChildLayerAlpha(childAlpha: Float): Int = (childAlpha.coerceIn(0f, 1f) * OPAQUE_LAYER_ALPHA).roundToInt()
 
 internal fun blurBackgroundAlpha(progress: Float): Int = ((1f - progress.coerceIn(0f, 1f)) * OPAQUE_LAYER_ALPHA).roundToInt()
 
