@@ -15,9 +15,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import com.absinthe.libchecker.R
 import com.absinthe.libchecker.annotation.STATUS_INIT_END
 import com.absinthe.libchecker.annotation.STATUS_NOT_START
@@ -43,15 +41,14 @@ import com.absinthe.libchecker.domain.home.ui.INavViewContainer
 import com.absinthe.libchecker.domain.home.ui.MainActivity
 import com.absinthe.libchecker.domain.home.ui.view.RecentVisitItem
 import com.absinthe.libchecker.domain.home.ui.view.installRecentVisitDrag
-import com.absinthe.libchecker.ui.adapter.addSpacingDecoration
 import com.absinthe.libchecker.ui.animator.ParticleRemoveItemAnimator
+import com.absinthe.libchecker.ui.animator.positionAtTop
 import com.absinthe.libchecker.ui.base.BaseActivity
 import com.absinthe.libchecker.ui.base.BaseListControllerFragment
 import com.absinthe.libchecker.ui.base.ListScreenChrome
 import com.absinthe.libchecker.ui.base.shouldHandleListSearchQueryChange
 import com.absinthe.libchecker.utils.Telemetry
 import com.absinthe.libchecker.utils.extensions.doOnMainThreadIdle
-import com.absinthe.libchecker.utils.extensions.dp
 import com.absinthe.libchecker.utils.extensions.launchDetailPage
 import com.absinthe.libchecker.utils.extensions.setSpaceFooterView
 import com.absinthe.libchecker.utils.harmony.HarmonyOsUtil
@@ -142,9 +139,6 @@ class AppListFragment :
         itemAnimator = particleItemAnimator
         wireListScreenChrome(this)
         layoutManager = createListScreenLayoutManager(resources.configuration)
-        if (itemDecorationCount == 0) {
-          addSpacingDecoration(4.dp, ratio = 0f)
-        }
         setHasFixedSize(true)
         FastScrollerBuilder(this).useMd2Style().build()
         resetScrollbarNavigationReveal =
@@ -181,6 +175,7 @@ class AppListFragment :
           Timber.e(e)
         }
       }
+      initView.setProgress(0, false)
       initView.loadingView.setAppIconHighlightProvider { getRandomAppIcon() }
     }
 
@@ -214,16 +209,12 @@ class AppListFragment :
       flip(VF_INIT)
       removeMenuProviderPreservingSearch()
     }
-    if (binding.vfContainer.displayedChild == VF_INIT) {
-      binding.initView.loadingView.start()
-    }
   }
 
   override fun onPause() {
     super.onPause()
     advancedMenuBSDFragment?.dismiss()
     advancedMenuBSDFragment = null
-    binding.initView.loadingView.stop()
   }
 
   override fun onConfigurationChanged(newConfig: Configuration) {
@@ -331,17 +322,14 @@ class AppListFragment :
             val menuState = homeViewModel.getAppListAdvancedMenuState()
             setOptionChangeListener(
               displayOptions = menuState.displayOptions,
-              itemDisplayOptions = menuState.itemDisplayOptions,
-              colorfulRuleIcon = menuState.colorfulRuleIcon,
-              onDisplayOptionsChanged = homeViewModel::setAppListDisplayOptions,
-              onItemDisplayOptionsChanged = homeViewModel::setAppListItemDisplayOptions
+              onDisplayOptionsChanged = homeViewModel::setAppListDisplayOptions
             )
-            setOnDismissListener { advancedDiff, itemAdvancedDiff ->
+            setOnDismissListener { advancedDiff ->
               val shouldReturnTopAfterUpdate =
                 shouldReturnAppListTopAfterAdvancedMenuChange(advancedDiff)
               val dismissPlan = homeViewModel.onAppListAdvancedMenuDismissed(
                 displayOptionsDiff = advancedDiff,
-                itemDisplayOptionsDiff = itemAdvancedDiff
+                itemDisplayOptionsDiff = 0
               )
               if (dismissPlan.shouldRefreshItems) {
                 updateItems(shouldReturnTopAfterUpdate = shouldReturnTopAfterUpdate)
@@ -373,9 +361,7 @@ class AppListFragment :
   override fun getSuitableLayoutManager() = binding.list.layoutManager
 
   override fun onReturnTop() {
-    if (binding.list.canScrollVertically(-1)) {
-      returnTopOfList()
-    } else {
+    if (!animateReturnTop(binding.list)) {
       if (!isListReady || appAdapter.data.isEmpty()) {
         flip(VF_LOADING)
       }
@@ -395,7 +381,7 @@ class AppListFragment :
           }
 
           is HomeViewModel.Effect.UpdateInitProgress -> {
-            binding.initView.progressIndicator.setProgressCompat(it.progress, true)
+            binding.initView.setProgress(it.progress, true)
           }
 
           is HomeViewModel.Effect.PackageChanged -> {
@@ -617,13 +603,10 @@ class AppListFragment :
   }
 
   private fun returnTopOfList() {
+    cancelReturnTopAnimation()
     binding.list.apply {
       post {
-        when (val manager = layoutManager) {
-          is LinearLayoutManager -> manager.scrollToPositionWithOffset(0, 0)
-          is StaggeredGridLayoutManager -> manager.scrollToPositionWithOffset(0, 0)
-          else -> scrollToPosition(0)
-        }
+        positionAtTop()
       }
     }
   }
@@ -640,12 +623,8 @@ class AppListFragment :
     }
     if (page == VF_INIT) {
       menu?.findItem(R.id.search)?.isVisible = false
-      if (isResumed) {
-        binding.initView.loadingView.start()
-      }
     } else {
       menu?.findItem(R.id.search)?.isVisible = true
-      binding.initView.loadingView.stop()
     }
   }
 

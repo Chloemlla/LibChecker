@@ -52,7 +52,8 @@ class SnapshotItemView(
 
   private val container = SnapshotItemContainerView(context, placeholderIconRes).apply {
     val padding = context.getDimensionPixelSize(R.dimen.main_card_padding)
-    setPadding(padding, padding, padding, padding)
+    val horizontalPadding = context.getDimensionPixelSize(R.dimen.main_list_horizontal_padding)
+    setPadding(horizontalPadding, padding, horizontalPadding, padding)
   }
 
   init {

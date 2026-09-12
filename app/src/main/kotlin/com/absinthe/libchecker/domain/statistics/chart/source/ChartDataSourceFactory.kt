@@ -5,17 +5,17 @@ import com.absinthe.libchecker.domain.statistics.chart.model.LOADING_PROGRESS_IN
 import com.absinthe.libchecker.domain.statistics.chart.model.StatisticCalculationKind
 import com.absinthe.libchecker.domain.statistics.chart.model.StatisticDefinition
 import com.absinthe.libchecker.domain.statistics.chart.model.StatisticNativeOperator
-import com.absinthe.libchecker.domain.statistics.chart.source.impl.AABChartDataSource
 import com.absinthe.libchecker.domain.statistics.chart.source.impl.ABIChartDataSource
 import com.absinthe.libchecker.domain.statistics.chart.source.impl.ApiLevelChartDataSource
+import com.absinthe.libchecker.domain.statistics.chart.source.impl.BinaryStatisticChartData
+import com.absinthe.libchecker.domain.statistics.chart.source.impl.BinaryStatisticChartDataSource
 import com.absinthe.libchecker.domain.statistics.chart.source.impl.DetailedABIChartDataSource
 import com.absinthe.libchecker.domain.statistics.chart.source.impl.DetailedKotlinChartDataSource
-import com.absinthe.libchecker.domain.statistics.chart.source.impl.FacetStatisticChartDataSource
-import com.absinthe.libchecker.domain.statistics.chart.source.impl.JetpackComposeChartDataSource
-import com.absinthe.libchecker.domain.statistics.chart.source.impl.KotlinChartDataSource
+import com.absinthe.libchecker.domain.statistics.chart.source.impl.FeatureFlagChartDataSource
 import com.absinthe.libchecker.domain.statistics.chart.source.impl.MarketDistributionChartDataSource
 import com.absinthe.libchecker.domain.statistics.chart.source.impl.PageSize16KBChartDataSource
-import com.absinthe.libchecker.domain.statistics.chart.source.impl.PredicateStatisticChartDataSource
+import com.absinthe.libchecker.domain.statistics.chart.ui.resolve
+import com.absinthe.libchecker.domain.statistics.chart.ui.summaryTitle
 import com.absinthe.libchecker.domain.statistics.chart.usecase.BuildApiLevelChartDataUseCase
 import com.absinthe.libchecker.domain.statistics.chart.usecase.BuildFeatureFlagChartDataUseCase
 import info.appdev.charting.charts.BarChart
@@ -33,23 +33,32 @@ internal class ChartDataSourceFactory(
     return when (statistic.calculation.kind) {
       StatisticCalculationKind.NATIVE -> createNative(items, statistic, useDetailedAbiChart)
 
-      StatisticCalculationKind.PREDICATE -> ChartDataSourcePlan.Pie(
-        PredicateStatisticChartDataSource(
-          items = items,
-          predicate = checkNotNull(statistic.calculation.predicate),
-          icon = statistic.icon,
-          buildData = chartDataProvider::buildPredicateStatisticData
+      StatisticCalculationKind.PREDICATE -> {
+        val predicate = checkNotNull(statistic.calculation.predicate)
+        ChartDataSourcePlan.Pie(
+          BinaryStatisticChartDataSource(items, predicate.matchedTitle, predicate.unmatchedTitle, statistic.icon) { _, sourceItems, progress ->
+            chartDataProvider.buildPredicateStatisticData(sourceItems, predicate, progress)?.let {
+              BinaryStatisticChartData(it.matched, it.unmatched)
+            }
+          }
         )
-      )
+      }
 
-      StatisticCalculationKind.FACETS -> ChartDataSourcePlan.Pie(
-        FacetStatisticChartDataSource(
-          items = items,
-          facets = checkNotNull(statistic.calculation.facets),
-          icon = statistic.icon,
-          buildData = chartDataProvider::buildFacetStatisticData
+      StatisticCalculationKind.FACETS -> {
+        val facets = checkNotNull(statistic.calculation.facets)
+        ChartDataSourcePlan.Pie(
+          BinaryStatisticChartDataSource(items, facets.matchedTitle, facets.unmatchedTitle, statistic.icon) { context, sourceItems, progress ->
+            chartDataProvider.buildFacetStatisticData(sourceItems, facets, progress)?.let { data ->
+              val titles = facets.items.associate { it.id to it.summaryTitle.resolve(context) }
+              BinaryStatisticChartData(
+                data.matched,
+                data.unmatched,
+                data.matchedFacetIds.mapValues { (_, ids) -> ids.mapNotNull(titles::get) }
+              )
+            }
+          }
         )
-      )
+      }
     }
   }
 
@@ -78,12 +87,11 @@ internal class ChartDataSourceFactory(
           )
         } else {
           ChartDataSourcePlan.Pie(
-            KotlinChartDataSource(items) { chartItems ->
-              chartDataProvider.buildFeatureFlagChartData(
-                chartItems,
-                BuildFeatureFlagChartDataUseCase.Kind.Kotlin
-              )
-            }
+            FeatureFlagChartDataSource(
+              items,
+              BuildFeatureFlagChartDataUseCase.Kind.Kotlin,
+              chartDataProvider::buildFeatureFlagChartData
+            )
           )
         }
       }
@@ -120,12 +128,11 @@ internal class ChartDataSourceFactory(
 
       StatisticNativeOperator.JETPACK_COMPOSE -> {
         ChartDataSourcePlan.Pie(
-          JetpackComposeChartDataSource(items) { chartItems ->
-            chartDataProvider.buildFeatureFlagChartData(
-              chartItems,
-              BuildFeatureFlagChartDataUseCase.Kind.JetpackCompose
-            )
-          }
+          FeatureFlagChartDataSource(
+            items,
+            BuildFeatureFlagChartDataUseCase.Kind.JetpackCompose,
+            chartDataProvider::buildFeatureFlagChartData
+          )
         )
       }
 
@@ -137,12 +144,11 @@ internal class ChartDataSourceFactory(
 
       StatisticNativeOperator.APP_BUNDLE -> {
         ChartDataSourcePlan.Pie(
-          AABChartDataSource(items) { chartItems ->
-            chartDataProvider.buildFeatureFlagChartData(
-              chartItems,
-              BuildFeatureFlagChartDataUseCase.Kind.AppBundle
-            )
-          }
+          FeatureFlagChartDataSource(
+            items,
+            BuildFeatureFlagChartDataUseCase.Kind.AppBundle,
+            chartDataProvider::buildFeatureFlagChartData
+          )
         )
       }
 

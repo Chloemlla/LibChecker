@@ -22,10 +22,9 @@ import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.core.widget.ImageViewCompat
 import com.absinthe.libchecker.R
+import com.absinthe.libchecker.domain.snapshot.detail.model.SnapshotDetailItemDisplayData
+import com.absinthe.libchecker.domain.snapshot.detail.model.SnapshotDetailRuleChipDisplayData
 import com.absinthe.libchecker.domain.snapshot.detail.ui.model.SnapshotDetailItemLayoutPlan
-import com.absinthe.libchecker.domain.snapshot.detail.ui.model.SnapshotDetailItemViewRenderState
-import com.absinthe.libchecker.domain.snapshot.detail.ui.model.SnapshotDetailRuleChipIconStyle
-import com.absinthe.libchecker.domain.snapshot.detail.ui.model.SnapshotDetailRuleChipRenderState
 import com.absinthe.libchecker.domain.snapshot.detail.ui.model.SnapshotDetailThemeColors
 import com.absinthe.libchecker.domain.snapshot.detail.ui.model.planSnapshotDetailHorizontalLayout
 import com.absinthe.libchecker.domain.snapshot.detail.ui.model.planSnapshotDetailItemLayout
@@ -145,23 +144,32 @@ class SnapshotDetailItemView(context: Context) : AViewGroup(context) {
     )
   }
 
-  fun render(state: SnapshotDetailItemViewRenderState) {
-    contentDescription = state.contentDescription
-    title.text = state.title.withSnapshotTechnicalPathBreakOpportunities()
+  fun render(state: SnapshotDetailItemDisplayData) {
+    contentDescription = state.description
+    title.text = (if (state.previousPackagePath == null) state.title else state.item.name)
+      .withSnapshotTechnicalPathBreakOpportunities()
     previousPackagePath.apply {
-      text = state.movedPath?.previousPackagePath
+      text = state.previousPackagePath
         ?.withSnapshotTechnicalPathBreakOpportunities()
         ?: ""
-      isVisible = state.movedPath != null
+      isVisible = state.previousPackagePath != null
     }
-    movedArrow.isVisible = state.movedPath != null
+    movedArrow.isVisible = state.previousPackagePath != null
     extra.apply {
       text = state.extra
       isVisible = state.extra.isNotBlank()
     }
-    statusLabelOpticalInset = resolveStatusLabelOpticalInset(state.iconRes)
-    statusIcon.setImageResource(state.iconRes)
-    statusLabel.setText(state.statusLabelRes)
+    statusLabelOpticalInset = resolveStatusLabelOpticalInset(state.status.iconRes)
+    statusIcon.setImageResource(state.status.iconRes)
+    val iconInsetFraction = when (state.status.iconRes) {
+      R.drawable.ic_add, R.drawable.ic_remove -> 5f / 24f
+      R.drawable.ic_changed -> 249.25f / 1024f
+      R.drawable.ic_move -> 120f / 1024f
+      else -> 0f
+    }
+    statusIcon.translationX = horizontalLayout.itemContentStart -
+      horizontalLayout.statusIndicatorStart - STATUS_ICON_SIZE * iconInsetFraction
+    statusLabel.setText(state.status.labelRes)
 
     val colors = resolveSnapshotDetailItemColors(
       theme = SnapshotDetailThemeColors(
@@ -170,7 +178,7 @@ class SnapshotDetailItemView(context: Context) : AViewGroup(context) {
         onSurfaceVariant = context.getColorByAttr(MaterialR.attr.colorOnSurfaceVariant),
         outlineVariant = context.getColorByAttr(MaterialR.attr.colorOutlineVariant)
       ),
-      statusColor = state.statusColorRes.getColor(context)
+      statusColor = state.status.colorRes.getColor(context)
     )
     background = GradientDrawable(
       GradientDrawable.Orientation.LEFT_RIGHT,
@@ -199,7 +207,7 @@ class SnapshotDetailItemView(context: Context) : AViewGroup(context) {
   }
 
   private fun setChip(
-    state: SnapshotDetailRuleChipRenderState?,
+    state: SnapshotDetailRuleChipDisplayData?,
     colors: com.absinthe.libchecker.domain.snapshot.detail.ui.model.SnapshotDetailItemResolvedColors
   ) {
     if (state == null) {
@@ -235,18 +243,14 @@ class SnapshotDetailItemView(context: Context) : AViewGroup(context) {
         clearColorFilter()
         DrawableCompat.setTintList(this, null)
       }
-      when (state.iconStyle) {
-        SnapshotDetailRuleChipIconStyle.Desaturated -> {
+      when {
+        state.isSimpleColorIcon -> DrawableCompat.setTint(icon, colors.chipText)
+
+        !state.useColorfulIcon -> {
           icon.colorFilter = ColorMatrixColorFilter(
             ColorMatrix().apply { setSaturation(0f) }
           )
         }
-
-        SnapshotDetailRuleChipIconStyle.ThemeTint -> {
-          DrawableCompat.setTint(icon, colors.chipText)
-        }
-
-        SnapshotDetailRuleChipIconStyle.Original -> Unit
       }
       setCompoundDrawablesRelative(icon, null, null, null)
       setOnClickListener(chipClickListener)
@@ -428,7 +432,7 @@ class SnapshotDetailItemView(context: Context) : AViewGroup(context) {
 }
 
 internal fun Context.buildSnapshotDetailHorizontalLayoutPlan() = planSnapshotDetailHorizontalLayout(
-  horizontalPadding = getDimensionPixelSize(R.dimen.normal_padding),
+  horizontalPadding = getDimensionPixelSize(R.dimen.normal_padding) + dpToDimensionPixelSize(4),
   statusRailWidth = dpToDimensionPixelSize(3),
   statusIconWidth = dpToDimensionPixelSize(16),
   statusIconOpticalInset = dpToDimensionPixelSize(3),

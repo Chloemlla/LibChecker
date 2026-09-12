@@ -4,9 +4,14 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.res.ColorStateList
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import androidx.appcompat.widget.AppCompatImageButton
+import androidx.appcompat.widget.TooltipCompat
 import androidx.core.view.doOnNextLayout
 import androidx.dynamicanimation.animation.FloatPropertyCompat
 import androidx.dynamicanimation.animation.SpringAnimation
@@ -43,6 +48,13 @@ class LibReferenceMenuBSDView(
 
   private var onAction: (LibReferenceMenuAction) -> Unit = {}
   private var hasRenderedState = false
+  private var treemapMode = false
+  private var pendingModeChange = false
+  private var lastState: LibReferenceMenuBottomSheetState? = null
+  private val treemapDemo = LibReferenceTreemapView(context, zoomEnabled = false).apply {
+    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 220.dp)
+    visibility = View.GONE
+  }
   private val demoTransitionGate = LibReferenceDemoTransitionGate()
   private val demoTransitionQueue = LibReferenceDemoTransitionQueue<PendingDemoBind>()
   private var activeHeightSpringGeneration = 0
@@ -127,31 +139,82 @@ class LibReferenceMenuBSDView(
       LayoutParams.WRAP_CONTENT
     )
     orientation = VERTICAL
+    addView(treemapDemo)
     addView(demoDivider)
     addView(optionsLayout)
   }
 
+  private val listModeAdapter = ConcatAdapter(demoAdapter, optionsAdapter)
+  private val treemapModeAdapter = ConcatAdapter(optionsAdapter)
+
   private val list = BottomSheetRecyclerView(context).apply {
+    configureVerticalList()
     layoutParams = LayoutParams(
       LayoutParams.MATCH_PARENT,
       LayoutParams.WRAP_CONTENT
     )
-    overScrollMode = OVER_SCROLL_NEVER
-    adapter = ConcatAdapter(demoAdapter, optionsAdapter)
-    layoutManager = LinearLayoutManager(context)
+    adapter = listModeAdapter
     itemAnimator = demoItemAnimator
-    isVerticalScrollBarEnabled = false
-    clipToPadding = false
-    clipChildren = false
     isNestedScrollingEnabled = true
+  }
+
+  private val displayModeButton = object : AppCompatImageButton(context) {
+    override fun setPressed(pressed: Boolean) {
+      super.setPressed(pressed)
+      scaleX = if (pressed) 0.92f else 1f
+      scaleY = scaleX
+    }
+  }.apply {
+    id = R.id.lib_reference_display_mode
+    setPadding(12.dp, 12.dp, 12.dp, 12.dp)
+    imageTintList = ColorStateList.valueOf(context.getColorByAttr(com.google.android.material.R.attr.colorOnSurface))
+    setBackgroundResource(R.drawable.ripple_chart_statistic_action_48dp)
   }
 
   init {
     val padding = 16.dp
     setPadding(padding, padding, padding, 0)
-    header.title.text = context.getString(R.string.advanced_menu)
+    header.title.apply {
+      text = context.getString(R.string.advanced_menu)
+      gravity = Gravity.CENTER
+      minimumHeight = 48.dp + resources.getDimensionPixelSize(R.dimen.bottom_sheet_header_content_spacing)
+      setPaddingRelative(56.dp, paddingTop, 56.dp, paddingBottom)
+    }
+    removeView(header)
+    addView(
+      FrameLayout(context).apply {
+        addView(header, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        addView(
+          displayModeButton,
+          FrameLayout.LayoutParams(48.dp, 48.dp, Gravity.TOP or Gravity.END)
+        )
+        header.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+          val title = header.title
+          displayModeButton.translationY = title.top + title.paddingTop +
+            (title.height - title.paddingTop - title.paddingBottom - 48.dp) / 2f
+        }
+      }
+    )
     addView(list)
     optionsAdapter.setList(listOf(Unit))
+  }
+
+  fun bindDisplayMode(isTreemap: Boolean, onToggle: () -> Unit) {
+    if (treemapMode != isTreemap) {
+      treemapMode = isTreemap
+      pendingModeChange = true
+      demoTransitionQueue.clear()
+      demoTransitionGate.advance()
+      cancelOngoingDemoTransition()
+      setDemoHeightAnimationRunning(false)
+      lastState?.let { bind(it, onAction) }
+    }
+    displayModeButton.setImageResource(if (isTreemap) R.drawable.ic_reference_list else R.drawable.ic_reference_treemap)
+    displayModeButton.contentDescription = context.getString(
+      if (isTreemap) R.string.lib_reference_switch_to_list else R.string.lib_reference_switch_to_treemap
+    )
+    TooltipCompat.setTooltipText(displayModeButton, displayModeButton.contentDescription)
+    displayModeButton.setOnClickListener { onToggle() }
   }
 
   fun bind(
@@ -159,6 +222,7 @@ class LibReferenceMenuBSDView(
     onAction: (LibReferenceMenuAction) -> Unit
   ) {
     this.onAction = onAction
+    lastState = state
     renderOptionButtons(state)
     val pendingBind = PendingDemoBind(state, onAction)
     demoTransitionQueue.offer(pendingBind)?.let(::render)
@@ -169,7 +233,50 @@ class LibReferenceMenuBSDView(
     val transitionGeneration = demoTransitionGate.advance()
     cancelOngoingDemoTransition()
     onAction = pendingBind.onAction
-    val currentDemoItems = demoAdapter.data.filterIsInstance<LibReference>()
+    val changingMode = pendingModeChange
+    pendingModeChange = false
+    val animateModeHeight = changingMode && hasRenderedState && isLaidOut
+    if (animateModeHeight) freezeCurrentHeight()
+    if (changingMode) {
+      list.itemAnimator?.endAnimations()
+      list.itemAnimator = null
+    }
+    treemapDemo.visibility = if (treemapMode && state.demoItems.isNotEmpty()) View.VISIBLE else View.GONE
+    if (changingMode) {
+      treemapDemo.colorfulRuleIcon = state.colorfulRuleIcon
+      treemapDemo.submitReferences(state.demoItems)
+      demoAdapter.bind(
+        LibReferenceListRenderState(
+          colorfulRuleIcon = state.colorfulRuleIcon,
+          labelSuffix = context.getString(R.string.lib_reference_demo_example_suffix)
+        )
+      )
+      demoAdapter.setList(state.demoItems)
+      list.adapter = if (treemapMode) treemapModeAdapter else listModeAdapter
+      renderDemoDivider(state)
+      hasRenderedState = true
+      list.doOnNextLayout {
+        if (demoTransitionGate.isCurrent(transitionGeneration)) list.itemAnimator = demoItemAnimator
+      }
+      if (animateModeHeight) {
+        list.doOnNextLayout {
+          scheduleMeasuredContentHeightAnimation(transitionGeneration, delayMillis = 0L)
+        }
+      } else {
+        completeDemoTransition(transitionGeneration)
+      }
+      return
+    }
+    if (treemapMode) {
+      treemapDemo.colorfulRuleIcon = state.colorfulRuleIcon
+      treemapDemo.submitReferences(state.demoItems, animate = hasRenderedState && isLaidOut)
+      demoAdapter.setList(emptyList())
+      renderDemoDivider(state)
+      hasRenderedState = true
+      completeDemoTransition(transitionGeneration)
+      return
+    }
+    val currentDemoItems = demoAdapter.data.toList()
     demoAdapter.bind(
       LibReferenceListRenderState(
         colorfulRuleIcon = state.colorfulRuleIcon,
@@ -227,6 +334,7 @@ class LibReferenceMenuBSDView(
     val plan = planLibReferenceDemoUpdate(currentItems, nextState.demoItems)
     if (plan !is LibReferenceDemoUpdatePlan.AnimateInsertion) return false
     val insertedItem = nextState.demoItems[plan.insertedIndex]
+    val anchorInsertionToTop = plan.insertedIndex == 0 && !list.canScrollVertically(-1)
 
     setDemoHeightAnimationRunning(true)
     list.itemAnimator = null
@@ -251,6 +359,10 @@ class LibReferenceMenuBSDView(
     renderDemoDivider(nextState)
     demoAdapter.setDiffNewData(nextState.demoItems) {
       if (!demoTransitionGate.isCurrent(transitionGeneration)) return@setDiffNewData
+      if (anchorInsertionToTop) {
+        // Keep the zero-height new row as the anchor instead of the previous first row.
+        (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(0, 0)
+      }
       list.doOnNextLayout {
         if (!demoTransitionGate.isCurrent(transitionGeneration)) return@doOnNextLayout
         val preparedInsertion = preparedDemoInsertion
@@ -263,6 +375,7 @@ class LibReferenceMenuBSDView(
         } else {
           animatePreparedDemoInsertion(
             preparedInsertion = preparedInsertion,
+            anchorInsertionToTop = anchorInsertionToTop,
             transitionGeneration = transitionGeneration,
             expandDivider = expandDivider,
             dividerParams = dividerParams,
@@ -309,6 +422,7 @@ class LibReferenceMenuBSDView(
 
   private fun animatePreparedDemoInsertion(
     preparedInsertion: PreparedDemoInsertion,
+    anchorInsertionToTop: Boolean,
     transitionGeneration: Int,
     expandDivider: Boolean,
     dividerParams: ViewGroup.MarginLayoutParams,
@@ -335,6 +449,9 @@ class LibReferenceMenuBSDView(
         marginParams?.bottomMargin = (preparedInsertion.targetBottomMargin * progress).toInt()
         preparedInsertion.itemView.layoutParams = preparedInsertion.itemParams
         preparedInsertion.itemView.alpha = progress
+        if (anchorInsertionToTop) {
+          (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(0, 0)
+        }
         if (expandDivider) {
           dividerParams.height = (dividerTargetHeight * progress).toInt()
           dividerParams.topMargin = (dividerTargetTopMargin * progress).toInt()
@@ -546,7 +663,7 @@ class LibReferenceMenuBSDView(
   }
 
   private fun demoItemsChanged(items: List<LibReference>): Boolean {
-    val currentItems = demoAdapter.data.filterIsInstance<LibReference>()
+    val currentItems = demoAdapter.data.toList()
     if (currentItems.size != items.size) return true
     return currentItems.zip(items).any { (current, next) ->
       current.libName != next.libName || current.type != next.type

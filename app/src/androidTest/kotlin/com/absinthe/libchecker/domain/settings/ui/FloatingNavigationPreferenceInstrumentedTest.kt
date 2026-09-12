@@ -3,10 +3,13 @@ package com.absinthe.libchecker.domain.settings.ui
 import android.app.Instrumentation
 import android.app.UiAutomation
 import android.content.Intent
+import android.graphics.Path
+import android.graphics.PathMeasure
 import android.graphics.Rect
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.preference.TwoStatePreference
 import androidx.recyclerview.widget.RecyclerView
@@ -17,7 +20,9 @@ import com.absinthe.libchecker.constant.Constants
 import com.absinthe.libchecker.constant.GlobalValues
 import com.absinthe.libchecker.domain.home.ui.MainActivity
 import com.absinthe.libchecker.view.app.BlurCoordinatorLayout
+import com.absinthe.libchecker.view.app.FLOATING_NAV_CORNER_SMOOTHING
 import com.absinthe.libchecker.view.app.FloatingNavigationBar
+import com.absinthe.libchecker.view.drawable.setG2Shape
 import com.google.android.material.R as MaterialR
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.navigation.NavigationBarView
@@ -31,6 +36,67 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FloatingNavigationPreferenceInstrumentedTest {
+  @Test
+  fun settingsIsCreatedOnDemandAndVisibleOnFirstSelection() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val monitor = instrumentation.addMonitor(MainActivity::class.java.name, null, false)
+    var activity: MainActivity? = null
+    try {
+      instrumentation.targetContext.startActivity(
+        Intent(instrumentation.targetContext, MainActivity::class.java)
+          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+      )
+      val host = instrumentation.waitForMonitorWithTimeout(monitor, 10_000L) as MainActivity
+      activity = host
+      assertTrue(
+        waitUntil(instrumentation) {
+          host.findViewById<NavigationBarView>(R.id.nav_view).isLaidOut
+        }
+      )
+      instrumentation.waitForIdleSync()
+      instrumentation.runOnMainSync {
+        assertTrue(host.supportFragmentManager.fragments.none { it is SettingsFragment })
+        val nav = host.findViewById<NavigationBarView>(R.id.nav_view)
+        assertEquals(R.id.navigation_app_list, nav.selectedItemId)
+        nav.selectedItemId = R.id.navigation_settings
+      }
+      assertTrue(
+        waitUntil(instrumentation) {
+          val settings = host.supportFragmentManager.fragments.filterIsInstance<SettingsFragment>().firstOrNull()
+          settings?.isResumed == true &&
+            settings.listView.findViewHolderForAdapterPosition(1)?.itemView?.getGlobalVisibleRect(Rect()) == true
+        }
+      )
+      instrumentation.runOnMainSync {
+        val settings = host.supportFragmentManager.fragments.filterIsInstance<SettingsFragment>().single()
+        val settingsView = settings.requireView()
+        val visibleBounds = Rect()
+        assertTrue(settingsView.getGlobalVisibleRect(visibleBounds))
+        assertTrue(visibleBounds.width() > 0 && visibleBounds.height() > 0)
+        val firstRow = settings.listView.findViewHolderForAdapterPosition(1)!!.itemView
+        assertEquals(host.getString(R.string.apk_analytics), firstRow.findViewById<TextView>(android.R.id.title).text)
+      }
+    } finally {
+      instrumentation.runOnMainSync { activity?.finish() }
+      instrumentation.removeMonitor(monitor)
+    }
+  }
+
+  @Test
+  fun floatingBottomNavigationHasSemicircularEnds() {
+    val path = Path().apply {
+      setG2Shape(0f, 0f, 320f, 64f, 32f, cornerSmoothing = FLOATING_NAV_CORNER_SMOOTHING)
+    }
+    val measure = PathMeasure(path, true)
+    val position = FloatArray(2)
+    assertEquals((512 + Math.PI * 64).toFloat(), measure.length, 0.2f)
+    for (angle in listOf(Math.PI / 4, Math.PI / 2, Math.PI * 3 / 4)) {
+      assertTrue(measure.getPosTan((256 + 32 * angle).toFloat(), position, null))
+      assertEquals((288 + 32 * kotlin.math.sin(angle)).toFloat(), position[0], 0.2f)
+      assertEquals((32 - 32 * kotlin.math.cos(angle)).toFloat(), position[1], 0.2f)
+    }
+  }
+
   @Test
   fun bottomNavigationDisableEndsAtItsNativeMeasuredHeight() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -52,7 +118,7 @@ class FloatingNavigationPreferenceInstrumentedTest {
           nav.forceLayout()
           nav.measure(widthSpec, heightSpec)
           if (progress == 1f) {
-            assertEquals((56 * density).toInt() + bottomInset, nav.measuredHeight)
+            assertEquals((64 * density).toInt() + bottomInset, nav.measuredHeight)
           } else {
             assertTrue("Height jumped at the attached endpoint", kotlin.math.abs(nav.measuredHeight - attachedHeight) <= 1)
           }

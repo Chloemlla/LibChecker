@@ -9,13 +9,12 @@ import com.absinthe.libchecker.domain.snapshot.SnapshotRepository
 import com.absinthe.libchecker.domain.snapshot.SnapshotSettingsRepository
 import com.absinthe.libchecker.domain.snapshot.comparison.usecase.CompareSnapshotDiffsUseCase
 import com.absinthe.libchecker.domain.snapshot.comparison.usecase.CompareSnapshotItemWithInstalledAppUseCase
-import com.absinthe.libchecker.domain.snapshot.detail.model.SnapshotDetailContent
 import com.absinthe.libchecker.domain.snapshot.detail.model.SnapshotDetailDiffTextStyle
+import com.absinthe.libchecker.domain.snapshot.detail.model.SnapshotDetailSection
 import com.absinthe.libchecker.domain.snapshot.detail.usecase.SnapshotDetailSectionBuilder
 import com.absinthe.libchecker.domain.snapshot.display.FormatSnapshotTimestampUseCase
 import com.absinthe.libchecker.domain.snapshot.display.SnapshotDashboardCount
 import com.absinthe.libchecker.domain.snapshot.display.SnapshotDashboardCounter
-import com.absinthe.libchecker.domain.snapshot.library.SnapshotLibrary
 import com.absinthe.libchecker.domain.snapshot.list.model.SnapshotCapturePlan
 import com.absinthe.libchecker.domain.snapshot.list.model.SnapshotSystemPropDisplayData
 import com.absinthe.libchecker.domain.snapshot.list.model.SnapshotTimeNodeListData
@@ -41,7 +40,7 @@ class SnapshotListWorkflow(
   private val compareSnapshotItemWithInstalledApp: CompareSnapshotItemWithInstalledAppUseCase,
   private val snapshotDashboardCounter: SnapshotDashboardCounter,
   private val snapshotDetailSectionBuilder: SnapshotDetailSectionBuilder,
-  private val snapshotLibrary: SnapshotLibrary,
+  private val snapshotRepository: SnapshotRepository,
   private val buildSnapshotCapturePlanUseCase: BuildSnapshotCapturePlanUseCase,
   private val getSnapshotPackageIconSourcesUseCase: GetSnapshotPackageIconSourcesUseCase,
   private val buildSnapshotListUpdatePlanUseCase: BuildSnapshotListUpdatePlanUseCase,
@@ -125,16 +124,19 @@ class SnapshotListWorkflow(
   suspend fun buildSnapshotDetailContent(
     entity: SnapshotDiffItem,
     diffTextStyle: SnapshotDetailDiffTextStyle
-  ): SnapshotDetailContent {
+  ): List<SnapshotDetailSection> {
     return snapshotDetailSectionBuilder(entity, diffTextStyle)
   }
 
   suspend fun getTimeStamps(): List<TimeStampItem> {
-    return snapshotLibrary.getTimeStamps()
+    return snapshotRepository.getTimeStamps()
   }
 
   suspend fun getSnapshots(timestamp: Long, packageName: String? = null): List<SnapshotItem> {
-    return snapshotLibrary.getSnapshots(timestamp, packageName)
+    val snapshots = snapshotRepository.getSnapshots(timestamp)
+    return packageName?.let { targetPackage ->
+      snapshots.filter { it.packageName == targetPackage }
+    } ?: snapshots
   }
 
   suspend fun getAppListItem(packageName: String): LCItem? {

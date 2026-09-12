@@ -5,7 +5,10 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
+import androidx.annotation.StringRes
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -28,7 +31,6 @@ import com.absinthe.libchecker.domain.app.detail.resource.ResolveAppResourceValu
 import com.absinthe.libchecker.domain.app.detail.resource.ResolveAppResourceValueUseCase.AppResourceValue
 import com.absinthe.libchecker.domain.app.detail.ui.DetailFragmentManager
 import com.absinthe.libchecker.domain.app.detail.ui.IDetailContainer
-import com.absinthe.libchecker.domain.app.detail.ui.Sortable
 import com.absinthe.libchecker.domain.app.detail.ui.adapter.LibStringAdapter
 import com.absinthe.libchecker.domain.app.detail.ui.dialog.LibDetailDialogFragment
 import com.absinthe.libchecker.domain.app.detail.ui.dialog.PermissionDetailDialogFragment
@@ -63,9 +65,7 @@ import timber.log.Timber
 
 const val EXTRA_TYPE = "EXTRA_TYPE"
 
-abstract class BaseDetailFragment<T : ViewBinding> :
-  BaseFragment<T>(),
-  Sortable {
+abstract class BaseDetailFragment<T : ViewBinding> : BaseFragment<T>() {
 
   protected val viewModel: DetailViewModel by activityViewModel()
   private val appDetailSettingsRepository: AppDetailSettingsRepository by inject()
@@ -131,6 +131,28 @@ abstract class BaseDetailFragment<T : ViewBinding> :
   protected abstract suspend fun getItems(): List<LibStringItemChip>
   protected abstract fun onItemsAvailable(items: List<LibStringItemChip>)
 
+  protected fun initializeList() {
+    getRecyclerView().adapter = adapter
+    adapter.apply {
+      animationEnable = false
+      stateView = this@BaseDetailFragment.emptyView
+      isStateViewEnable = true
+    }
+  }
+
+  protected fun showInitialItems(
+    items: List<LibStringItemChip>,
+    @StringRes emptyMessage: Int = R.string.empty_list,
+    process: String? = null
+  ) {
+    if (items.isEmpty()) {
+      emptyView.text.text = getString(emptyMessage)
+    } else {
+      submitItemsWithFilter(items, viewModel.filterState.queriedText, process)
+    }
+    markListReady(items.size)
+  }
+
   protected suspend fun <T : Any> StateFlow<T?>.valueOrAwait(): T {
     return value ?: filterNotNull().first()
   }
@@ -144,6 +166,15 @@ abstract class BaseDetailFragment<T : ViewBinding> :
 
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     super.onViewCreated(view, savedInstanceState)
+    viewLifecycleOwner.lifecycleScope.launch {
+      viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+        viewModel.itemDisplayOptions.collect { options ->
+          val currentAdapter = adapter
+          listRenderState = listRenderState.copy(itemDisplayOptions = options)
+          currentAdapter.bind(listRenderState, refreshItems = true)
+        }
+      }
+    }
     if (!autoLoadItems) {
       return
     }
@@ -210,7 +241,7 @@ abstract class BaseDetailFragment<T : ViewBinding> :
     )
   }
 
-  override suspend fun sort() {
+  suspend fun sort() {
     val list = mutableListOf<LibStringItemChip>().also {
       it += adapter.data
     }
@@ -260,7 +291,7 @@ abstract class BaseDetailFragment<T : ViewBinding> :
     updateItemsWithFilterResult(viewModel.filterAndSortDetailItems(items, searchWords, process, type))
   }
 
-  override suspend fun setItemsWithFilter(searchWords: String?, process: String?) {
+  suspend fun setItemsWithFilter(searchWords: String?, process: String?) {
     updateListRenderState { it.copy(highlightText = searchWords.orEmpty()) }
     updateItemsWithFilterResult(getFilterList(searchWords, process))
   }

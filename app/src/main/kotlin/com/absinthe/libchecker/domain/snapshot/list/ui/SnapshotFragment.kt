@@ -56,7 +56,6 @@ import com.absinthe.libchecker.domain.snapshot.model.SnapshotDiffItem
 import com.absinthe.libchecker.domain.snapshot.timenode.ui.TimeNodeBottomSheetDialogFragment
 import com.absinthe.libchecker.services.OnShootListener
 import com.absinthe.libchecker.services.ShootService
-import com.absinthe.libchecker.ui.adapter.addSpacingDecoration
 import com.absinthe.libchecker.ui.animator.ParticleRemoveItemAnimator
 import com.absinthe.libchecker.ui.base.BaseActivity
 import com.absinthe.libchecker.ui.base.BaseAlertDialogBuilder
@@ -119,7 +118,7 @@ class SnapshotFragment :
       lifecycleScope.launch(Dispatchers.Main) {
         flip(VF_LOADING)
         runCatching {
-          binding.progressIndicator.setProgressCompat(progress, true)
+          binding.loading.setProgress(progress, true)
         }
       }
     }
@@ -140,7 +139,8 @@ class SnapshotFragment :
           ViewGroup.LayoutParams.MATCH_PARENT,
           ViewGroup.LayoutParams.WRAP_CONTENT
         ).also {
-          it.setMargins(8.dp, 2.dp, 8.dp, 2.dp)
+          val horizontalMargin = resources.getDimensionPixelSize(R.dimen.main_list_horizontal_padding)
+          it.setMargins(horizontalMargin, 2.dp, horizontalMargin, 2.dp)
         }
       }
 
@@ -256,9 +256,6 @@ class SnapshotFragment :
         wireListScreenChrome(this)
         layoutManager = createListScreenLayoutManager(resources.configuration)
 
-        if (itemDecorationCount == 0) {
-          addSpacingDecoration(4.dp, ratio = 0f)
-        }
         scrollToPosition(0)
       }
       vfContainer.apply {
@@ -268,7 +265,7 @@ class SnapshotFragment :
           adapter.setSpaceFooterView()
         }
       }
-      loading.setAppIconHighlightProvider { getRandomAppIcon() }
+      loading.loadingView.setAppIconHighlightProvider { getRandomAppIcon() }
     }
 
     viewModel.apply {
@@ -294,7 +291,7 @@ class SnapshotFragment :
         }
       }.launchIn(lifecycleScope)
       comparingProgress.onEach {
-        binding.progressIndicator.setProgressCompat(it, it != 1)
+        binding.loading.setProgress(it, it != 1)
       }.launchIn(lifecycleScope)
     }
     homeViewModel.effect.onEach {
@@ -374,17 +371,12 @@ class SnapshotFragment :
         )
       )
     }
-
-    if (binding.vfContainer.displayedChild == VF_LOADING) {
-      binding.loading.start()
-    }
   }
 
   override fun onPause() {
     super.onPause()
     advancedMenuBSDFragment?.dismiss()
     advancedMenuBSDFragment = null
-    binding.loading.stop()
   }
 
   override fun onDestroyView() {
@@ -566,13 +558,9 @@ class SnapshotFragment :
       return
     }
     if (child == VF_LOADING) {
-      if (isResumed) {
-        binding.loading.start()
-      }
       menu?.findItem(R.id.save)?.isVisible = false
       menu?.findItem(R.id.search)?.isVisible = false
     } else {
-      binding.loading.stop()
       binding.list.scrollToPosition(0)
       menu?.findItem(R.id.save)?.isVisible = true
       menu?.findItem(R.id.search)?.isVisible = true
@@ -584,10 +572,7 @@ class SnapshotFragment :
   override fun getSuitableLayoutManager() = binding.list.layoutManager
 
   override fun onReturnTop() {
-    val context = context ?: return
-    if (binding.list.canScrollVertically(-1)) {
-      binding.list.smoothScrollToPosition(0)
-    } else {
+    if (!animateReturnTop(binding.list)) {
       flip(VF_LOADING)
       viewModel.compareDiff(viewModel.selectedSnapshotTimestamp)
     }

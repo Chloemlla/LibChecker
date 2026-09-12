@@ -7,6 +7,8 @@ import android.content.ServiceConnection
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Outline
+import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.drawable.Drawable
 import android.os.Bundle
@@ -16,6 +18,7 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.animation.PathInterpolator
 import androidx.appcompat.widget.SearchView
@@ -30,6 +33,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.doOnNextLayout
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.get
 import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
@@ -74,9 +78,12 @@ import com.absinthe.libchecker.utils.extensions.isKeyboardShowing
 import com.absinthe.libchecker.utils.extensions.launchDetailPage
 import com.absinthe.libchecker.utils.extensions.launchLibReferencePage
 import com.absinthe.libchecker.view.app.BlurCoordinatorLayout
+import com.absinthe.libchecker.view.app.FLOATING_NAV_CORNER_SMOOTHING
 import com.absinthe.libchecker.view.app.FloatingNavigationBar
 import com.absinthe.libchecker.view.app.InvalidatingHideBottomViewOnScrollBehavior
 import com.absinthe.libchecker.view.drawable.G2PillDrawable
+import com.absinthe.libchecker.view.drawable.setConvexPathOrFallback
+import com.absinthe.libchecker.view.drawable.setG2Shape
 import com.chloemlla.lumen.crash.LumenCrash
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.motion.MotionUtils
@@ -117,9 +124,21 @@ class MainActivity :
   private var recentVisitsPopup: RecentVisitsPopup? = null
   private val cloudRulesRepository: CloudRulesRepository by inject()
   private var listController: IListController? = null
+  private var imeController: HomeImeAnimationController? = null
+  val keyboardNavigationOffset: Float get() = imeController?.navigationOffset ?: 0f
+
+  fun registerHomeListInsets(view: View, owner: LifecycleOwner) {
+    imeController?.registerList(view, owner)
+  }
+
+  fun observeKeyboardInsets(owner: LifecycleOwner, frame: (WindowInsetsCompat) -> Unit, end: () -> Unit) {
+    imeController?.observe(owner, frame, end)
+  }
+
   private val initialListTopPaddings = WeakHashMap<View, Int>()
   private var blurContainer: BlurCoordinatorLayout? = null
   private var appbarScrollTarget: RecyclerView? = null
+  private var appbarReturnTopRunning = false
   private val appbarLocation = IntArray(2)
   private val appbarScrollTargetLocation = IntArray(2)
   private var pendingAnchorRestoreObserver: ViewTreeObserver? = null
@@ -215,6 +234,7 @@ class MainActivity :
   }
 
   override fun onDestroy() {
+    imeController?.dispose()
     recentVisitsPopup?.dismissImmediately()
     recentVisitsPopup = null
     appbarScrollTarget?.removeOnScrollListener(appbarScrollListener)
@@ -275,6 +295,7 @@ class MainActivity :
   }
 
   override fun showNavigationView() {
+    if (imeController?.miniActive == true) return
     // NavigationRailView 不需要隐藏，所以不需要显示
     if (binding.navView is BottomNavigationView) {
       navViewBehavior.slideUp(binding.navView as BottomNavigationView)
@@ -282,6 +303,7 @@ class MainActivity :
   }
 
   override fun hideNavigationView() {
+    if (imeController?.miniActive == true) return
     // NavigationRailView 不需要隐藏
     if (binding.navView is BottomNavigationView) {
       navViewBehavior.slideDown(binding.navView as BottomNavigationView)
@@ -316,6 +338,12 @@ class MainActivity :
     updateAppbarContentUnderlap(isLiftedHint = isLifted)
   }
 
+  override fun setAppbarReturnTopRunning(running: Boolean) {
+    appbarReturnTopRunning = running
+    binding.appbar.isLiftOnScroll = !running && blurContainer?.blurEnabled != true
+    updateAppbarContentUnderlap()
+  }
+
   override fun setBlurDesignEnabled(enabled: Boolean) {
     blurDesignEnabled = enabled
     val scrollAnchor = captureAppbarScrollAnchor()
@@ -339,7 +367,7 @@ class MainActivity :
         (binding.navView as? NavigationBarView)?.let { navView ->
           reconcileNavigationBackground(navView)
           val density = resources.displayMetrics.density
-          navView.elevation = (3f + 3f * floatingNavProgress) * density
+          navView.elevation = (3f - 2f * floatingNavProgress) * density
         }
         updateToolbarHdrHighlight(contentUnderlaps, animate = false)
         finishLayoutTransition(false)
@@ -414,8 +442,28 @@ class MainActivity :
     originalLabelVisibilityMode = navView.labelVisibilityMode
     originalNavBackground = navView.background
     navPillDrawable = G2PillDrawable(
-      fillColor = getColorByAttr(com.google.android.material.R.attr.colorSurfaceContainer)
+      fillColor = getColorByAttr(com.google.android.material.R.attr.colorSurfaceContainer),
+      cornerSmoothing = if (navView is BottomNavigationView) FLOATING_NAV_CORNER_SMOOTHING else null
     )
+    val attachedOutlineProvider = navView.outlineProvider
+    navView.outlineProvider = object : ViewOutlineProvider() {
+      private val path = Path()
+
+      @Suppress("DEPRECATION")
+      override fun getOutline(view: View, outline: Outline) {
+        if (view is BottomNavigationView && floatingNavProgress > 0f) {
+          val radius = view.height / 2f * floatingNavProgress
+          path.setG2Shape(0f, 0f, view.width.toFloat(), view.height.toFloat(), radius, cornerSmoothing = FLOATING_NAV_CORNER_SMOOTHING)
+          setConvexPathOrFallback(
+            setConvexPath = { outline.setConvexPath(path) },
+            setFallback = { outline.setRoundRect(0, 0, view.width, view.height, radius) }
+          )
+          outline.alpha = 1f
+        } else {
+          attachedOutlineProvider?.getOutline(view, outline)
+        }
+      }
+    }
     if (floatingNavEnabled) {
       navView.background = navPillDrawable
     }
@@ -455,7 +503,7 @@ class MainActivity :
     val maxHorizontalMargin = resources.getDimensionPixelSize(R.dimen.floating_nav_bar_margin_horizontal)
     val density = resources.displayMetrics.density
     val normalElevation = 3f * density
-    val floatingElevation = 6f * density
+    val floatingElevation = 1f * density
     val lp = view.layoutParams as? ViewGroup.MarginLayoutParams
 
     if (view is BottomNavigationView) {
@@ -526,11 +574,18 @@ class MainActivity :
 
     navPillDrawable?.setStroke(density * progress, strokeColorInt)
     navPillDrawable?.setCornerProgress(progress)
+    view.invalidateOutline()
+    if (OsUtils.atLeastP()) {
+      val shadowColor = (0x66 * progress).roundToInt() shl 24
+      view.outlineAmbientShadowColor = shadowColor
+      view.outlineSpotShadowColor = shadowColor
+    }
 
     if (!isNavigationBackgroundManagedByBlur(view)) {
       view.elevation = normalElevation + (floatingElevation - normalElevation) * progress
     }
     blurContainer?.setFloatingNavProgress(progress)
+    imeController?.refresh()
   }
 
   private fun installBlurContainer(): BlurCoordinatorLayout? {
@@ -575,7 +630,7 @@ class MainActivity :
   }
 
   private fun updateAppbarContentUnderlap(isLiftedHint: Boolean = false) {
-    val contentUnderlaps = isLiftedHint || isListItemUnderAppbar()
+    val contentUnderlaps = !appbarReturnTopRunning && (isLiftedHint || isListItemUnderAppbar())
     blurContainer?.setAppbarContentUnderlap(contentUnderlaps)
     if (blurContainer?.blurEnabled != true) {
       binding.appbar.isLifted = contentUnderlaps
@@ -743,9 +798,15 @@ class MainActivity :
     )
   }
 
+  fun updateStatisticsIcon(treemap: Boolean) {
+    (binding.navView as NavigationBarView).menu.findItem(R.id.navigation_classify)
+      .setIcon(if (treemap) R.drawable.ic_reference_treemap else R.drawable.ic_reference_list)
+  }
+
   private fun initView() {
     val navView = binding.navView as NavigationBarView
     val floatingNavView = navView as? FloatingNavigationBar
+    updateStatisticsIcon(GlobalValues.libReferenceTreemap)
     binding.appbar.addOnLayoutChangeListener { appbar, _, _, _, _, _, _, _, _ ->
       applyHomeListTopPaddings(appbar.bottom)
     }
@@ -830,6 +891,9 @@ class MainActivity :
           }
 
           HomeDestination.fromNavigationItemId(it.itemId)?.let { destination ->
+            if (destination.pageIndex != viewpager.currentItem && imeController?.miniActive == true) {
+              imeController?.hideKeyboard(window)
+            }
             performClickNavigationItem(destination.pageIndex)
             true
           } ?: false
@@ -860,14 +924,24 @@ class MainActivity :
     )
     // Apply floating nav bar config before blur design replaces the background with transparency.
     initFloatingNavBar(navView)
+    imeController = HomeImeAnimationController(
+      root = binding.root,
+      navigation = navView,
+      floatingEnabled = { floatingNavEnabled },
+      revealNavigation = { (navView as? BottomNavigationView)?.let { navViewBehavior.slideUp(it, false) } },
+      invalidateBackdrop = { blurContainer?.invalidate() }
+    )
     // Apply blur config last so it wins over the behavior/background setup above.
     setBlurDesignEnabled(GlobalValues.isBlurDesign)
   }
+
+  private val boundRecentVisitTabs = WeakHashMap<View, Unit>()
 
   private fun bindRecentVisitsShortcuts(navView: NavigationBarView) {
     for (index in 0 until navView.menu.size()) {
       val id = navView.menu.getItem(index).itemId
       val tab = navView.findViewById<View>(id) ?: continue
+      if (boundRecentVisitTabs.put(tab, Unit) != null) continue
       TooltipCompat.setTooltipText(tab, null)
       if (id == R.id.navigation_app_list || id == R.id.navigation_classify) {
         val libraries = id == R.id.navigation_classify
@@ -951,7 +1025,9 @@ class MainActivity :
       .setInterpolator(PAGE_EXIT_INTERPOLATOR)
       .setUpdateListener { blurContainer?.invalidate() }
       .withEndAction {
-        viewPager.setCurrentItem(index, false)
+        val destination = pendingPageIndex ?: index
+        pendingPageIndex = null
+        viewPager.setCurrentItem(destination, false)
         viewPager.translationX = direction * offset
         blurContainer?.invalidate()
         viewPager.animate()
