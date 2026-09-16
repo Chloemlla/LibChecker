@@ -8,6 +8,7 @@ import com.absinthe.libchecker.domain.app.list.TRACE_APP_LIST_RESOLVE_PACKAGE_ST
 import com.absinthe.libchecker.domain.app.list.model.InstalledPackageState
 import com.absinthe.libchecker.domain.app.list.traceAppListSection
 import com.absinthe.libchecker.domain.app.repository.InstalledAppRepository
+import com.absinthe.libchecker.domain.app.repository.PackageListLoadException
 import com.absinthe.libchecker.utils.FreezeUtils
 
 class GetAppListPackageStatesUseCase(
@@ -17,7 +18,11 @@ class GetAppListPackageStatesUseCase(
   fun createSnapshot(): PackageStateSnapshot {
     return PackageStateSnapshot(
       applicationMap = traceAppListSection(TRACE_APP_LIST_GET_APPLICATION_MAP) {
-        installedAppRepository.getApplicationMap()
+        try {
+          installedAppRepository.getApplicationMap()
+        } catch (_: PackageListLoadException) {
+          emptyMap()
+        }
       }
     )
   }
@@ -31,18 +36,21 @@ class GetAppListPackageStatesUseCase(
     }
     val applicationMap = snapshot?.applicationMap ?: createSnapshot().applicationMap
     return traceAppListSection(TRACE_APP_LIST_RESOLVE_PACKAGE_STATES) {
-      items.associate { item ->
-        item.packageName to if (item.packageName == Constants.EXAMPLE_PACKAGE) {
-          InstalledPackageState(packageInfo = null, isFrozen = false)
-        } else {
-          applicationMap[item.packageName]?.let { packageInfo ->
-            InstalledPackageState(
-              packageInfo = packageInfo,
-              isFrozen = packageInfo.applicationInfo?.let(FreezeUtils::isAppFrozen) ?: true
-            )
-          } ?: installedAppRepository.getPackageState(item.packageName)
+      items.associateBy(
+        keySelector = { it.packageName },
+        valueTransform = { item ->
+          if (item.packageName == Constants.EXAMPLE_PACKAGE) {
+            InstalledPackageState(packageInfo = null, isFrozen = false)
+          } else {
+            applicationMap[item.packageName]?.let { packageInfo ->
+              InstalledPackageState(
+                packageInfo = packageInfo,
+                isFrozen = packageInfo.applicationInfo?.let(FreezeUtils::isAppFrozen) ?: true
+              )
+            } ?: installedAppRepository.getPackageState(item.packageName)
+          }
         }
-      }
+      )
     }
   }
 

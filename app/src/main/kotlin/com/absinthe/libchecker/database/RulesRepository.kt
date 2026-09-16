@@ -1,6 +1,7 @@
 package com.absinthe.libchecker.database
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabaseCorruptException
 import android.database.sqlite.SQLiteException
 import android.os.SystemClock
 import com.absinthe.libchecker.LibCheckerApp
@@ -87,7 +88,7 @@ object RulesRepository {
     val target = getDatabaseFile(context)
     target.parentFile?.mkdirs()
     RikkaFileUtils.copy(source, target)
-    return target.readBytes().md5() == source.readBytes().md5()
+    return target.md5() == source.md5()
   }
 
   fun deleteDatabase(context: Context = LibCheckerApp.app) {
@@ -103,15 +104,15 @@ object RulesRepository {
     return try {
       LCRules.getRule(name, type, regex)
     } catch (e: SQLiteException) {
-      if (!e.isMissingRulesTable()) {
-        throw e
-      }
+      if (!e.isRecoverableRulesDatabaseFailure()) throw e
       recover(e)
-      runCatching {
+      try {
         LCRules.getRule(name, type, regex)
-      }.onFailure {
-        Timber.e(it)
-      }.getOrNull()
+      } catch (retryFailure: SQLiteException) {
+        if (!retryFailure.isRecoverableRulesDatabaseFailure()) throw retryFailure
+        Timber.e(retryFailure)
+        null
+      }
     }
   }
 
@@ -135,7 +136,8 @@ object RulesRepository {
     packageName: String? = null,
     nativeLibNames: Collection<String>? = null
   ): Map<String, Rule?> {
-    val rules = names.distinct().associateWith { getRule(it, type, true) }
+    val distinctNames = if (names is Set<String>) names else names.toSet()
+    val rules = distinctNames.associateWith { getRule(it, type, true) }
     if (type != NATIVE || packageName == null) {
       return rules
     }
@@ -238,7 +240,7 @@ object RulesRepository {
     otherNativeLibNames: Collection<String>? = null,
     sourceProvider: () -> File?
   ): Map<String, Boolean> {
-    val distinctNativeLibs = nativeLibs.distinct()
+    val distinctNativeLibs = if (nativeLibs is Set<String>) nativeLibs else nativeLibs.toSet()
     val namesToValidate = distinctNativeLibs.filter(::requiresNativeLibValidation)
     if (namesToValidate.isEmpty()) {
       return distinctNativeLibs.associateWith { true }
@@ -296,8 +298,9 @@ object RulesRepository {
     }
   }
 
-  private fun SQLiteException.isMissingRulesTable(): Boolean {
-    return message?.contains(MISSING_RULES_TABLE_MESSAGE, ignoreCase = true) == true
+  private fun SQLiteException.isRecoverableRulesDatabaseFailure(): Boolean {
+    return this is SQLiteDatabaseCorruptException ||
+      message?.contains(MISSING_RULES_TABLE_MESSAGE, ignoreCase = true) == true
   }
 
   private fun recover(cause: SQLiteException) {
@@ -308,7 +311,8 @@ object RulesRepository {
       }
       lastRecoveryUptime = now
 
-      Timber.w(cause, "Rules database is missing rules_table, rebuilding.")
+      Timber.w(cause, "Rules database is missing or corrupt, rebuilding.")
+      LCRules.close()
       deleteDatabase()
       reinitialize()
     }

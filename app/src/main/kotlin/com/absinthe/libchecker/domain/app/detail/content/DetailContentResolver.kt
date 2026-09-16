@@ -57,7 +57,10 @@ import com.absinthe.libchecker.utils.harmony.ApplicationDelegate
 import com.absinthe.libchecker.utils.manifest.ApplicationReader
 import com.absinthe.rulesbundle.Rule
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import ohos.bundle.AbilityInfo
 import ohos.bundle.IBundleManager
@@ -99,7 +102,7 @@ class DetailContentResolver(
           parseElfForAbi = parseElfForAbi
         )
       } else {
-        apkPreviewInfo!!.nativeLibs.map {
+        apkPreviewInfo?.nativeLibs.orEmpty().map {
           ABI_STRING_MAP[it.key]!! to it.value.map { value ->
             LibStringItem(
               name = value.first,
@@ -169,9 +172,12 @@ class DetailContentResolver(
     }.toMutableList()
 
     if (sortBySize) {
-      chipList.sortByDescending { it.item.size }
+      chipList.sortWith { a, b -> b.item.size.compareTo(a.item.size) }
     } else {
-      chipList.sortWith(compareByDescending<LibStringItemChip> { it.rule != null }.thenByDescending { it.item.size })
+      chipList.sortWith { a, b ->
+        val ruleCompare = (b.rule != null).compareTo(a.rule != null)
+        if (ruleCompare != 0) ruleCompare else b.item.size.compareTo(a.item.size)
+      }
     }
     chipList
   }
@@ -320,24 +326,33 @@ class DetailContentResolver(
     )
   }
 
-  private fun getComponents(
+  private suspend fun getComponents(
     packageInfo: PackageInfo,
     isApk: Boolean
-  ): AppDetailComponents {
-    val parsedIntentFiltersByClassName = packageInfo.applicationInfo?.sourceDir
-      ?.let { sourceDir ->
-        IntentFilterUtils.parseComponentsFromApk(sourceDir)
-          .asSequence()
-          .associate { item -> item.className to item.intentFilters }
-      }
-      .orEmpty()
+  ): AppDetailComponents = coroutineScope {
+    val intentFiltersDeferred = async(Dispatchers.IO) {
+      packageInfo.applicationInfo?.sourceDir
+        ?.let { sourceDir ->
+          IntentFilterUtils.parseComponentsFromApk(sourceDir)
+            .associateBy(
+              keySelector = { it.className },
+              valueTransform = { it.intentFilters }
+            )
+        }
+        .orEmpty()
+    }
 
-    return AppDetailComponents(
-      services = packageInfo.getComponents(isApk, SERVICE),
-      activities = packageInfo.getComponents(isApk, ACTIVITY),
-      receivers = packageInfo.getComponents(isApk, RECEIVER),
-      providers = packageInfo.getComponents(isApk, PROVIDER),
-      intentFiltersByClassName = parsedIntentFiltersByClassName
+    val services = packageInfo.getComponents(isApk, SERVICE)
+    val activities = packageInfo.getComponents(isApk, ACTIVITY)
+    val receivers = packageInfo.getComponents(isApk, RECEIVER)
+    val providers = packageInfo.getComponents(isApk, PROVIDER)
+
+    AppDetailComponents(
+      services = services,
+      activities = activities,
+      receivers = receivers,
+      providers = providers,
+      intentFiltersByClassName = intentFiltersDeferred.await()
     )
   }
 
@@ -380,17 +395,15 @@ class DetailContentResolver(
   private suspend fun AppDetailComponents.toChips(
     packageName: String,
     useIntentFilterRules: Boolean
-  ): AppDetailComponentChips {
-    val ruleCache = mutableMapOf<String, Rule?>()
+  ): AppDetailComponentChips = coroutineScope {
+    val ruleCache = ConcurrentHashMap<String, RuleBox>()
 
     suspend fun getRuleCached(name: String, @LibType type: Int, regex: Boolean): Rule? {
       val key = "$type:$regex:$name"
-      if (ruleCache.containsKey(key)) {
-        return ruleCache[key]
-      }
-      return RulesRepository.getRule(name, type, regex).also {
-        ruleCache[key] = it
-      }
+      ruleCache[key]?.let { return it.rule }
+      val resolved = RulesRepository.getRule(name, type, regex)
+      ruleCache.putIfAbsent(key, RuleBox(resolved))
+      return resolved
     }
 
     suspend fun StatefulComponent.toChip(@LibType componentType: Int): LibStringItemChip {
@@ -432,11 +445,16 @@ class DetailContentResolver(
       )
     }
 
-    return AppDetailComponentChips(
-      services = services.map { it.toChip(SERVICE) },
-      activities = activities.map { it.toChip(ACTIVITY) },
-      receivers = receivers.map { it.toChip(RECEIVER) },
-      providers = providers.map { it.toChip(PROVIDER) },
+    val servicesDeferred = async { services.map { it.toChip(SERVICE) } }
+    val activitiesDeferred = async { activities.map { it.toChip(ACTIVITY) } }
+    val receiversDeferred = async { receivers.map { it.toChip(RECEIVER) } }
+    val providersDeferred = async { providers.map { it.toChip(PROVIDER) } }
+
+    AppDetailComponentChips(
+      services = servicesDeferred.await(),
+      activities = activitiesDeferred.await(),
+      receivers = receiversDeferred.await(),
+      providers = providersDeferred.await(),
       processNames = sequenceOf(services, activities, receivers, providers)
         .flatten()
         .map { it.processName }
@@ -444,6 +462,8 @@ class DetailContentResolver(
         .toSet()
     )
   }
+
+  private class RuleBox(val rule: Rule?)
 
   fun getAbilityChips(packageName: String): Map<Int, List<LibStringItemChip>> {
     val abilities = ApplicationDelegate(context).iBundleManager?.getBundleInfo(
@@ -489,15 +509,15 @@ class DetailContentResolver(
       return emptyList()
     }
 
-    return items.map {
+    val chipList = items.mapTo(ArrayList(items.size)) {
       LibStringItemChip(it, RulesRepository.getRule(it.name, DEX, true))
-    }.sortedWith(
-      if (sortBySizeMode) {
-        compareByDescending { it.item.name }
-      } else {
-        compareByDescending { it.rule != null }
-      }
-    )
+    }
+    if (sortBySizeMode) {
+      chipList.sortByDescending { it.item.name }
+    } else {
+      chipList.sortWith { a, b -> (b.rule != null).compareTo(a.rule != null) }
+    }
+    return chipList
   }
 
   fun getMetadataChips(
@@ -508,7 +528,7 @@ class DetailContentResolver(
     val items = if (!isApkPreview && apkPreviewInfo == null) {
       getInstalledMetadataChips(packageInfo)
     } else {
-      apkPreviewInfo!!.metadata
+      apkPreviewInfo?.metadata.orEmpty()
         .map { metadata ->
           var flag = 0L
           val value = if (metadata.value is Long || (metadata.value as? String)?.maybeResourceId() == true) {
@@ -589,7 +609,7 @@ class DetailContentResolver(
           )
         }
     } else {
-      apkPreviewInfo!!.permissions.asSequence()
+      apkPreviewInfo?.permissions.orEmpty().asSequence()
         .map { permission ->
           LibStringItemChip(
             LibStringItem(name = permission, size = 0, source = null, process = null),
@@ -619,13 +639,8 @@ class DetailContentResolver(
       } else {
         PackageManagerCompat.getPackageArchiveInfo(packageInfo.applicationInfo!!.sourceDir, flags)!!
           .getSignatures(context)
-      }
-    }.onFailure {
-      Timber.e(it)
-    }.getOrDefault(emptySequence())
-      .map {
-        LibStringItemChip(it, null)
-      }.toList()
+      }.map { LibStringItemChip(it, null) }.toList()
+    }.onFailure { Timber.e(it) }.getOrDefault(emptyList())
   }
 
   suspend fun getStaticLibraryChips(
@@ -637,15 +652,15 @@ class DetailContentResolver(
       return emptyList()
     }
 
-    return items.map {
+    val chipList = items.mapTo(ArrayList(items.size)) {
       LibStringItemChip(it, RulesRepository.getRule(it.name, STATIC, false))
-    }.sortedWith(
-      if (sortBySizeMode) {
-        compareByDescending { it.item.name }
-      } else {
-        compareByDescending { it.rule != null }
-      }
-    )
+    }
+    if (sortBySizeMode) {
+      chipList.sortByDescending { it.item.name }
+    } else {
+      chipList.sortWith { a, b -> (b.rule != null).compareTo(a.rule != null) }
+    }
+    return chipList
   }
 
   suspend fun getStaticLibraryTabItems(

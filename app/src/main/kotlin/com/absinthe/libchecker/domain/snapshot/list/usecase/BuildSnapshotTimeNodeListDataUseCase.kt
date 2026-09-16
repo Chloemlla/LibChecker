@@ -4,6 +4,7 @@ import com.absinthe.libchecker.database.entity.TimeStampItem
 import com.absinthe.libchecker.domain.snapshot.display.FormatSnapshotTimestampUseCase
 import com.absinthe.libchecker.domain.snapshot.list.model.SnapshotTimeNodeListData
 import com.absinthe.libchecker.domain.snapshot.model.SnapshotPackageIconSource
+import com.absinthe.libchecker.domain.snapshot.timenode.model.SnapshotPalette
 import com.absinthe.libchecker.domain.snapshot.timenode.model.SnapshotRepresentativeApps
 import com.absinthe.libchecker.domain.snapshot.timenode.model.SnapshotTimeNodeItem
 import kotlinx.coroutines.Dispatchers
@@ -23,17 +24,25 @@ class BuildSnapshotTimeNodeListDataUseCase(
   ): SnapshotTimeNodeListData = withContext(Dispatchers.Default) {
     val refreshedTimeStamps = refreshRepresentativeApps(timeStamps)
     val snapshotCounts = getSnapshotCountsByTimestamp()
-    val candidatePackageNamesByTimestamp = refreshedTimeStamps.associate { item ->
-      item.timestamp to SnapshotRepresentativeApps.decode(item.topApps)
-    }
+    val candidatePackageNamesByTimestamp = refreshedTimeStamps.associateBy(
+      keySelector = { it.timestamp },
+      valueTransform = { SnapshotRepresentativeApps.decode(it.topApps) }
+    )
     val candidatePackageNames = candidatePackageNamesByTimestamp.values
       .asSequence()
       .flatten()
       .distinct()
       .toList()
     val packageIconSources = getSnapshotPackageIconSources(candidatePackageNames)
+    val chronologicalIndices = refreshedTimeStamps
+      .sortedBy { it.timestamp }
+      .mapIndexed { idx, itm -> itm.timestamp to idx }
+      .toMap()
     val items = refreshedTimeStamps.map { item ->
       val timestampText = formatTimestamp(item.timestamp)
+      val tagColor = chronologicalIndices[item.timestamp]?.let {
+        SnapshotPalette.getColor(it)
+      }
       SnapshotTimeNodeItem(
         timestamp = item.timestamp,
         timestampText = timestampText,
@@ -45,7 +54,9 @@ class BuildSnapshotTimeNodeListDataUseCase(
           }
           .take(VISIBLE_APP_CANDIDATE_LIMIT),
         appCount = snapshotCounts[item.timestamp] ?: 0,
-        isCurrent = item.timestamp == currentTimestamp
+        isCurrent = item.timestamp == currentTimestamp,
+        isSelected = item.timestamp == currentTimestamp,
+        tagColor = tagColor
       )
     }
     val visiblePackageNames = items.asSequence()

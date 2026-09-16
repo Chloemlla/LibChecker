@@ -13,6 +13,7 @@ import com.absinthe.libchecker.database.entity.SnapshotDiffStoringItem
 import com.absinthe.libchecker.database.entity.SnapshotItem
 import com.absinthe.libchecker.database.entity.SnapshotSummaryItem
 import com.absinthe.libchecker.database.entity.SnapshotTimestampCount
+import com.absinthe.libchecker.database.entity.SnapshotUpdatedApp
 import com.absinthe.libchecker.database.entity.TimeStampItem
 import com.absinthe.libchecker.database.entity.TrackItem
 import kotlinx.coroutines.flow.Flow
@@ -30,7 +31,7 @@ interface LCDao {
   @Query("SELECT packageName from item_table WHERE features = -1")
   suspend fun getUninitializedFeaturePackageNames(): List<String>
 
-  @Query("SELECT * from item_table WHERE packageName LIKE :packageName")
+  @Query("SELECT * from item_table WHERE packageName = :packageName")
   suspend fun getItem(packageName: String): LCItem?
 
   @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -42,11 +43,17 @@ interface LCDao {
   @Update
   suspend fun update(item: LCItem)
 
+  @Update
+  suspend fun updateLCItems(items: List<LCItem>)
+
   @Delete
   suspend fun delete(item: LCItem)
 
   @Query("DELETE FROM item_table WHERE packageName = :packageName")
   suspend fun deleteLCItemByPackageName(packageName: String)
+
+  @Query("DELETE FROM item_table WHERE packageName IN (:packageNames)")
+  suspend fun deleteLCItemsByPackageNames(packageNames: List<String>)
 
   @Query("DELETE FROM item_table")
   suspend fun deleteAllItems()
@@ -88,6 +95,12 @@ interface LCDao {
 
   @Query("SELECT timeStamp AS timestamp, COUNT(*) AS count FROM snapshot_table GROUP BY timeStamp")
   suspend fun getSnapshotCountsByTimestamp(): List<SnapshotTimestampCount>
+
+  @Query("SELECT lastUpdatedTime FROM snapshot_table WHERE timeStamp = :timestamp")
+  suspend fun getSnapshotLastUpdatedTimes(timestamp: Long): List<Long>
+
+  @Query("SELECT packageName, label, lastUpdatedTime FROM snapshot_table WHERE timeStamp = :timestamp")
+  suspend fun getSnapshotUpdatedApps(timestamp: Long): List<SnapshotUpdatedApp>
 
   @Upsert
   suspend fun insert(item: SnapshotItem)
@@ -149,6 +162,9 @@ interface LCDao {
   @Upsert
   suspend fun insertSnapshotDiff(item: SnapshotDiffStoringItem)
 
+  @Upsert
+  suspend fun insertSnapshotDiffs(items: List<SnapshotDiffStoringItem>)
+
   @Update
   suspend fun updateSnapshotDiff(item: SnapshotDiffStoringItem)
 
@@ -160,4 +176,7 @@ interface LCDao {
 
   @Query("SELECT * from diff_table WHERE packageName = :packageName")
   suspend fun getSnapshotDiff(packageName: String): SnapshotDiffStoringItem?
+
+  @Query("SELECT * from diff_table")
+  suspend fun getSnapshotDiffs(): List<SnapshotDiffStoringItem>
 }

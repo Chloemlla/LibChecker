@@ -108,6 +108,12 @@ class SnapshotFragment :
   private val particleItemAnimator = ParticleRemoveItemAnimator()
 
   private val shootListener = object : OnShootListener.Stub() {
+    override fun onShootFailed() {
+      lifecycleScope.launch(Dispatchers.Main) {
+        viewModel.onSnapshotCaptureFailed()
+      }
+    }
+
     override fun onShootFinished(timestamp: Long) {
       lifecycleScope.launch(Dispatchers.Main) {
         viewModel.onSnapshotCaptureFinished(timestamp)
@@ -151,19 +157,26 @@ class SnapshotFragment :
       lifecycleScope.launch(Dispatchers.IO) {
         val timeStampList = viewModel.getTimeStamps()
         withContext(Dispatchers.Main) {
-          TimeNodeBottomSheetDialogFragment.newInstance(ArrayList(timeStampList))
-            .apply {
-              setOnItemClickListener { position ->
-                val item = timeStampList[position]
-                viewModel.refreshSnapshotTimestamp(item.timestamp, shouldClearDiff = true)
+          TimeNodeBottomSheetDialogFragment.newInstance(
+            ArrayList(timeStampList),
+            viewModel.selectedSnapshotTimestamp
+          ).apply {
+            setOnItemClickListener { _, item ->
+              if (viewModel.selectedSnapshotTimestamp != item.timestamp) {
                 flip(VF_LOADING)
-                dismiss()
+                viewModel.refreshSnapshotTimestamp(item.timestamp, shouldClearDiff = true)
               }
             }
-            .show(
-              context.supportFragmentManager,
-              TimeNodeBottomSheetDialogFragment::class.java.name
-            )
+            setOnDismissListener {
+              if (viewModel.currentTimeStamp != viewModel.selectedSnapshotTimestamp) {
+                flip(VF_LOADING)
+                viewModel.refreshSelectedSnapshot(shouldClearDiff = true)
+              }
+            }
+          }.show(
+            context.supportFragmentManager,
+            TimeNodeBottomSheetDialogFragment::class.java.name
+          )
         }
       }
     }
@@ -307,6 +320,11 @@ class SnapshotFragment :
     }.launchIn(lifecycleScope)
     viewModel.effect.onEach {
       when (it) {
+        SnapshotViewModel.Effect.PackageListLoadFailed -> {
+          flip(VF_LIST)
+          context?.let { context -> Toasty.showShort(context, R.string.package_list_load_failed) }
+        }
+
         is SnapshotViewModel.Effect.DashboardCountChange -> {
           dashboardAppsCountText = String.format(Locale.getDefault(), "%d / %d", it.snapshotCount, it.appCount)
           renderDashboard()
@@ -322,6 +340,7 @@ class SnapshotFragment :
             }
           } else {
             dashboardTimestampText = getString(R.string.snapshot_none)
+            dashboardAppsCountText = ""
             dashboardSystemProps = emptyList()
             renderDashboard()
             viewModel.clearSnapshotDiffItems()
@@ -331,7 +350,7 @@ class SnapshotFragment :
       }
     }.launchIn(lifecycleScope)
 
-    viewModel.changeTimeStamp(viewModel.selectedSnapshotTimestamp)
+    viewModel.showCurrentSnapshot()
   }
 
   override fun onAttach(context: Context) {
@@ -583,7 +602,7 @@ class SnapshotFragment :
   }
 
   override fun onQueryTextChange(newText: String?): Boolean {
-    if (!shouldHandleListSearchQueryChange(viewLifecycleOwner.lifecycle.currentState)) {
+    if (!shouldHandleListSearchQueryChange(viewLifecycleOwnerLiveData.value?.lifecycle?.currentState)) {
       return false
     }
     val keyword = newText.orEmpty()
@@ -623,7 +642,9 @@ class SnapshotFragment :
     lifecycleScope.launch(Dispatchers.IO) {
       val displayedSystemProps = viewModel.getSystemPropDisplayData(timestamp)
       launch(Dispatchers.Main) {
-        onSystemPropsReady(displayedSystemProps)
+        if (timestamp == viewModel.currentTimeStamp) {
+          onSystemPropsReady(displayedSystemProps)
+        }
       }
     }
   }
