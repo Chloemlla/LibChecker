@@ -218,7 +218,9 @@ Important `:app` boundaries:
 - For R8 rule validation, inspect generated
   `app/build/outputs/mapping/*/configuration.txt` and `mapping.txt`.
   R8 validation alone does not prove release signing or packaging succeeds.
-  See `docs/rules-data.md`.
+  Local market release/minify checks must exclude
+  `:app:uploadCrashlyticsMappingFileMarketRelease`; the existing task graph
+  otherwise executes a mapping upload. See `docs/rules-data.md`.
 - Ensure device freezer/background-management settings allow instrumentation
   packages to run during macrobenchmarks.
 
