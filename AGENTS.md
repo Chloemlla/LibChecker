@@ -187,6 +187,15 @@ Important `:app` boundaries:
 - Prefer `FileProvider` for sharing/exporting app files. Any legacy `file://`
   exposure must stay narrowly scoped and idempotent; new paths should not
   expand it.
+- The only bundled rule database and metadata live in the rules AAR, initialized
+  by `LCRules.init(Context)`. Do not add App database assets or an updater that
+  recreates them. App Store manages downloaded current/previous data only.
+  Android rule packages contain only `rules.db` and `metadata.json`; only
+  v5 current/previous/bundled data participates in selection. Never restore v4
+  database fallback or use old numeric markers as the active version. Keep
+  descriptions on the selected cloud JSON source and library icons in Bundle
+  drawable/IconResMap; independent chart SVG support is separate. New Android
+  icons require a Bundle resource release and App dependency update.
 - Keep `foss` free of Google/Firebase behavior.
 - Review manifests carefully when changing exported activities, deep links,
   FileProvider, Shizuku provider authorities, package visibility, foreground
@@ -209,6 +218,7 @@ Important `:app` boundaries:
 - For R8 rule validation, inspect generated
   `app/build/outputs/mapping/*/configuration.txt` and `mapping.txt`.
   R8 validation alone does not prove release signing or packaging succeeds.
+  See `docs/rules-data.md`.
 - Ensure device freezer/background-management settings allow instrumentation
   packages to run during macrobenchmarks.
 

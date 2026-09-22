@@ -12,6 +12,16 @@ plugins {
   id("res-opt")
 }
 
+val rulesBundleTestData = configurations.create("rulesBundleTestData") {
+  isCanBeConsumed = false
+  isTransitive = false
+}
+tasks.withType<Test>().configureEach {
+  val archive = files(rulesBundleTestData)
+  inputs.files(archive)
+  doFirst { systemProperty("rulesBundleAar", archive.singleFile.absolutePath) }
+}
+
 ksp {
   arg("moshi.generated", "javax.annotation.Generated")
 }
@@ -38,10 +48,6 @@ setupAppModule {
     release {
       optimization {
         enable = true
-        keepRules {
-          // https://github.com/AppDevNext/AndroidChart/blob/master/chartLib/proguard-lib.pro
-          ignoreFrom(libs.mpAndroidChart.get().module.toString())
-        }
       }
     }
     create("benchmark") {
@@ -142,6 +148,7 @@ dependencies {
   implementation(libs.rikka.refine.runtime)
   implementation(libs.bundles.zhaobozhen)
   implementation(libs.lc.rules)
+  add(rulesBundleTestData.name, libs.lc.rules)
   ksp(libs.androidX.room3.compiler)
 
   testImplementation(libs.junit)
@@ -171,6 +178,12 @@ dependencies {
   // ships consumer R8 keep rules (proguard.txt) that AGP merges automatically.
   implementation(platform(libs.compose.bom))
   implementation("com.chloemlla.lumen:lumen-crash:$lumenCrashVersion")
+}
+
+aboutLibraries {
+  collect {
+    configPath = file("aboutlibraries")
+  }
 }
 
 protobuf {

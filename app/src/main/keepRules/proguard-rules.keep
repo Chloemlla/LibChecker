@@ -67,11 +67,6 @@
     java.util.ArrayList mHiddenViews;
 }
 
-# Chart
--keep public class info.appdev.charting.animation.* {
-    public protected *;
-}
-
 # Lumen Crash SDK — explicit backup minify exemption.
 # The AAR consumer-rules.pro (com.chloemlla.lumen:lumen-crash) already keeps the
 # com.chloemlla.lumen.crash.** package and is merged automatically; this is a
