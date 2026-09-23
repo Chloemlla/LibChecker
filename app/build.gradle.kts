@@ -48,6 +48,14 @@ setupAppModule {
     release {
       optimization {
         enable = true
+        // Scope broad consumer rules locally; exact versions restore upstream rules on upgrade.
+        keepRules {
+          includeDefault = false
+          ignoreFrom("androidx.annotation:annotation-jvm:1.10.0")
+          ignoreFrom("androidx.coordinatorlayout:coordinatorlayout:1.1.0")
+          ignoreFrom("androidx.recyclerview:recyclerview:1.4.0")
+          ignoreFrom("com.google.android.material:material:1.14.0")
+        }
       }
     }
     create("benchmark") {

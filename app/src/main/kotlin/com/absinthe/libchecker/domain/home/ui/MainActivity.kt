@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
@@ -119,6 +120,8 @@ class MainActivity :
   INavViewContainer,
   IAppBarContainer,
   IListControllerHost {
+
+  override fun inflateBinding(inflater: LayoutInflater) = ActivityMainBinding.inflate(inflater)
 
   private val appViewModel: HomeViewModel by viewModel()
   private val recentVisitsViewModel: RecentVisitsViewModel by viewModel()

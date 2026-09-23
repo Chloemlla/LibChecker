@@ -43,7 +43,7 @@ abstract class BaseActivity<VB : ViewBinding> :
       onApplyTranslucentSystemBars()
     }
     super.onCreate(savedInstanceState.discardIfContainsUnreadableParcelable(javaClass.classLoader))
-    binding = (inflateBinding(layoutInflater) as VB).also {
+    binding = inflateBinding(layoutInflater).also {
       setContentView(it.root)
     }
     ThemeTransitionController.animateEnterIfNeeded(this)
