@@ -49,6 +49,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import pxb.android.axml.ValueWrapper
@@ -245,19 +246,21 @@ class DetailItemResolver(
     packageName: String,
     elfPath: String
   ): AppElfDetail? = withContext(Dispatchers.IO) {
+    val coroutineContext = currentCoroutineContext()
+    val checkCancellation = Runnable { coroutineContext.ensureActive() }
     val packageInfo = installedAppRepository.getPackageInfo(packageName) ?: return@withContext null
     val nativePath = packageInfo.applicationInfo?.nativeLibraryDir
     if (nativePath != null) {
       File(nativePath).listFiles()
         ?.find { it.path.endsWith(elfPath) }
-        ?.let { return@withContext ElfParser(it).readElfDetail() }
+        ?.let { return@withContext ElfParser(it, checkCancellation).readElfDetail() }
     }
 
     val sourceDir = packageInfo.applicationInfo?.sourceDir ?: return@withContext null
-    findElfDetailInApk(File(sourceDir), elfPath)?.let { return@withContext it }
+    findElfDetailInApk(File(sourceDir), elfPath, checkCancellation)?.let { return@withContext it }
 
     PackageUtils.getSplitsSourceDir(packageInfo)?.forEach { split ->
-      findElfDetailInApk(File(split), elfPath)?.let { return@withContext it }
+      findElfDetailInApk(File(split), elfPath, checkCancellation)?.let { return@withContext it }
     }
     null
   }
@@ -324,10 +327,14 @@ class DetailItemResolver(
     }
   }
 
-  private fun findElfDetailInApk(apk: File, elfPath: String): AppElfDetail? {
+  private fun findElfDetailInApk(
+    apk: File,
+    elfPath: String,
+    checkCancellation: Runnable
+  ): AppElfDetail? {
     ZipFileCompat(apk).use { zipFile ->
       val entry = zipFile.getEntry(elfPath) ?: return null
-      return ElfParser(zipFile.getInputStream(entry)).readElfDetail()
+      return ElfParser(zipFile.getInputStream(entry), checkCancellation).readElfDetail()
     }
   }
 

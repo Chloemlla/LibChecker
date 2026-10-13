@@ -269,8 +269,9 @@ class AndroidStatisticEvidenceRepository(
         return results
       }
       checkCancellation()
-      val container = try {
-        FastDexFileFactory.loadDexContainer(sourceFile, Opcodes.getDefault(), checkCancellation)
+      val (container, entryNames) = try {
+        val loaded = FastDexFileFactory.loadDexContainer(sourceFile, Opcodes.getDefault(), checkCancellation)
+        loaded to loaded.dexEntryNames.toList()
       } catch (error: CancellationException) {
         throw error
       } catch (error: Throwable) {
@@ -278,7 +279,6 @@ class AndroidStatisticEvidenceRepository(
         reportProgress(fileIndex, 0, 1, 0, 1)
         return@sourceLoop
       }
-      val entryNames = container.dexEntryNames.toList()
       if (entryNames.isEmpty()) {
         reportProgress(fileIndex, 0, 1, 0, 1)
         return@sourceLoop
@@ -290,42 +290,48 @@ class AndroidStatisticEvidenceRepository(
           return results
         }
         checkCancellation()
-        val dexFile = container.getEntry(entryName)?.dexFile
-        if (dexFile == null) {
-          reportProgress(fileIndex, entryIndex, entryNames.size, 0, 1)
-          return@entryLoop
-        }
-        val eligibleQueries = unmatchedGroups.associateWith { group ->
-          group.queries.filter { query ->
-            query.stringConstants.isEmpty() ||
-              dexFile.stringSection.withIndex().any { (index, value) ->
-                if (index % DEX_PROGRESS_CLASS_INTERVAL == 0) checkCancellation()
-                value in query.stringConstants
-              }
+        try {
+          val dexFile = container.getEntry(entryName)?.dexFile
+          if (dexFile == null) {
+            reportProgress(fileIndex, entryIndex, entryNames.size, 0, 1)
+            return@entryLoop
           }
-        }.filterValues { it.isNotEmpty() }
-        if (eligibleQueries.isEmpty()) {
-          reportProgress(fileIndex, entryIndex, entryNames.size, 0, 1)
-          return@entryLoop
-        }
-        val matchedGroups = mutableSetOf<StatisticArtifactQuery.DexClasses>()
-        val classCount = dexFile.classes.size.coerceAtLeast(1)
-        for ((classIndex, classDef) in dexFile.classes.withIndex()) {
-          if (classIndex % DEX_PROGRESS_CLASS_INTERVAL == 0) checkCancellation()
-          eligibleQueries.forEach { (group, queries) ->
-            if (group !in matchedGroups && queries.any { query -> classDef.matches(query, checkCancellation) }) {
-              matchedGroups += group
+          val stringSection = dexFile.stringSection
+          val eligibleQueries = unmatchedGroups.associateWith { group ->
+            group.queries.filter { query ->
+              checkCancellation()
+              query.stringConstants.isEmpty() ||
+                query.stringConstants.any { constant -> stringSection.binarySearch(constant) >= 0 }
             }
+          }.filterValues { it.isNotEmpty() }
+          if (eligibleQueries.isEmpty()) {
+            reportProgress(fileIndex, entryIndex, entryNames.size, 0, 1)
+            return@entryLoop
           }
-          if (classIndex % DEX_PROGRESS_CLASS_INTERVAL == 0 || classIndex == classCount - 1) {
-            reportProgress(fileIndex, entryIndex, entryNames.size, classIndex, classCount)
+          val matchedGroups = mutableSetOf<StatisticArtifactQuery.DexClasses>()
+          val classCount = dexFile.classes.size.coerceAtLeast(1)
+          for ((classIndex, classDef) in dexFile.classes.withIndex()) {
+            if (classIndex % DEX_PROGRESS_CLASS_INTERVAL == 0) checkCancellation()
+            eligibleQueries.forEach { (group, queries) ->
+              if (group !in matchedGroups && queries.any { query -> classDef.matches(query, checkCancellation) }) {
+                matchedGroups += group
+              }
+            }
+            if (classIndex % DEX_PROGRESS_CLASS_INTERVAL == 0 || classIndex == classCount - 1) {
+              reportProgress(fileIndex, entryIndex, entryNames.size, classIndex, classCount)
+            }
+            if (matchedGroups.size == eligibleQueries.size) break
           }
-          if (matchedGroups.size == eligibleQueries.size) break
-        }
-        reportProgress(fileIndex, entryIndex, entryNames.size, classCount - 1, classCount)
-        matchedGroups.forEach { group ->
-          results[group] = true
-          unmatchedGroups -= group
+          reportProgress(fileIndex, entryIndex, entryNames.size, classCount - 1, classCount)
+          matchedGroups.forEach { group ->
+            results[group] = true
+            unmatchedGroups -= group
+          }
+        } catch (error: CancellationException) {
+          throw error
+        } catch (error: Throwable) {
+          Timber.w(error, "Unable to scan statistic DEX entry %s from %s", entryName, sourceFile)
+          reportProgress(fileIndex, entryIndex, entryNames.size, 0, 1)
         }
       }
     }
@@ -370,7 +376,7 @@ class AndroidStatisticEvidenceRepository(
   private fun MethodReference.matches(expected: StatisticDexMethodReference): Boolean {
     return definingClass == expected.definingClass &&
       name == expected.name &&
-      (expected.parameterTypes == null || parameterTypes.map(CharSequence::toString) == expected.parameterTypes)
+      matchesParameterTypes(parameterTypes, expected.parameterTypes)
   }
 
   private fun readManifestReceiverActions(sourcePaths: List<String>, checkCancellation: () -> Unit): Set<String> {
@@ -491,4 +497,16 @@ internal fun resolveManifestBooleanValue(
 
     else -> null
   }
+}
+
+internal fun matchesParameterTypes(
+  actual: List<CharSequence>,
+  expected: List<String>?
+): Boolean {
+  if (expected == null) return true
+  if (actual.size != expected.size) return false
+  for (index in actual.indices) {
+    if (actual[index].toString() != expected[index]) return false
+  }
+  return true
 }

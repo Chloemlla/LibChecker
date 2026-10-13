@@ -51,6 +51,7 @@ import com.absinthe.libchecker.ui.base.shouldHandleListSearchQueryChange
 import com.absinthe.libchecker.utils.Telemetry
 import com.absinthe.libchecker.utils.extensions.doOnMainThreadIdle
 import com.absinthe.libchecker.utils.extensions.launchDetailPage
+import com.absinthe.libchecker.utils.extensions.launchDocument
 import com.absinthe.libchecker.utils.extensions.setSpaceFooterView
 import com.absinthe.libchecker.utils.harmony.HarmonyOsUtil
 import com.absinthe.libchecker.utils.showToast
@@ -92,7 +93,7 @@ class AppListFragment :
 
   private val isFirstLaunch get() = !Once.beenDone(Once.THIS_APP_INSTALL, OnceTag.FIRST_LAUNCH)
   private val getRandomAppIcon: GetRandomAppIconUseCase by inject()
-  private val appAdapter = AppAdapter()
+  private val appAdapter = AppAdapter().apply { setHasStableIds(true) }
   private val particleItemAnimator = ParticleRemoveItemAnimator()
   private var appListRenderState = AppListRenderState()
   private var updateItemsJob: Job? = null
@@ -120,7 +121,6 @@ class AppListFragment :
         suppressImeOnNextSearchRestore = menu?.findItem(R.id.search)?.isActionViewExpanded == true
         activity?.launchDetailPage(it.getItem(position))
       }
-      it.setHasStableIds(true)
       it.stateView =
         EmptyListView(context).apply {
           layoutParams = FrameLayout.LayoutParams(
@@ -214,6 +214,11 @@ class AppListFragment :
     }
   }
 
+  override fun onDestroyView() {
+    binding.list.adapter = null
+    super.onDestroyView()
+  }
+
   override fun onPause() {
     super.onPause()
     advancedMenuBSDFragment?.dismiss()
@@ -269,7 +274,9 @@ class AppListFragment :
         is HomeViewModel.AppListSearchCommandAction.DumpAppsInfo -> {
           pendingDumpAppsInfoAction = action
           runCatching {
-            dumpAppsInfoResultLauncher.launch(action.fileName)
+            if (!dumpAppsInfoResultLauncher.launchDocument(requireContext(), action.fileName)) {
+              pendingDumpAppsInfoAction = null
+            }
           }.onFailure {
             pendingDumpAppsInfoAction = null
             Timber.e(it)
@@ -538,20 +545,35 @@ class AppListFragment :
             isListReady = true
             onSearchResultsApplied(updatePlan.content.renderState.highlightText, updatePlan.content.items.isEmpty())
             val initialItemViewStateCount = updatePlan.content.renderState.itemViewStates.size
-            if (initialItemViewStateCount > 0) {
-              notifyItemRangeChanged(0, initialItemViewStateCount.coerceAtMost(data.size))
+            val notifyRangeCount = if (currentItems.isEmpty()) {
+              0
+            } else {
+              initialItemViewStateCount.coerceAtMost(data.size)
+            }
+            val deferRangeRefresh = binding.list.hasPendingAdapterUpdates()
+            if (!deferRangeRefresh) {
+              if (notifyRangeCount > 0) {
+                notifyItemRangeChanged(0, notifyRangeCount)
+              }
+              if (highlightRefresh) {
+                notifyHighlightTextChanged()
+              }
             }
             binding.list.doOnNextLayout {
+              if (deferRangeRefresh) {
+                if (notifyRangeCount > 0) {
+                  notifyItemRangeChanged(0, notifyRangeCount)
+                }
+                if (highlightRefresh) {
+                  notifyHighlightTextChanged()
+                }
+              }
               updateRemainingItemViewStates(
                 items = updatePlan.content.items,
                 initialItemViewStateCount = initialItemViewStateCount,
                 packageStateSnapshot = updatePlan.content.packageStateSnapshot,
                 updateGeneration = generation
               )
-            }
-
-            if (highlightRefresh) {
-              notifyHighlightTextChanged()
             }
 
             setSpaceFooterView()
